@@ -13,7 +13,7 @@ import {
 import { MaterialIcons, FontAwesome5 } from "@expo/vector-icons";
 import apiService from "../../services/apiService";
 import ReportScreen from "../Technician/ReportScreen";
-import SwipeableVisitRow from '../../components/SwipeableVisitRow';
+import VisitRow from '../../components/VisitRow';
 import pestfreeLogo from "../../../assets/pestfree_logo.png";
 
 export default function CustomerProfile({ customer, onClose, onOpenReport }) {
@@ -475,7 +475,7 @@ export default function CustomerProfile({ customer, onClose, onOpenReport }) {
                     >
                       {visits.map(visit => (
                         // UPDATED: Pass appointmentId as a prop
-                        <SwipeableVisitRow
+                        <VisitRow
                           key={visit.visitId}
                           visit={visit}
                           appointmentId={visit.appointmentId}

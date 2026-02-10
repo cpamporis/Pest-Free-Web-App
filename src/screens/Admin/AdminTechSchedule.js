@@ -79,6 +79,30 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
   const [showEditTimePicker, setShowEditTimePicker] = useState(false);
   const HOURS = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
   const MINUTES = Array.from({ length: 12 }, (_, i) => (i * 5).toString().padStart(2, '0'));
+  const isWeb = Platform.OS === "web";
+  const showAlert = (title, message) => {
+    if (Platform.OS === "web") {
+      window.alert(`${title}\n\n${message}`);
+    } else {
+      Alert.alert(title, message);
+    }
+  };
+
+  function toISODate(d) {
+    if (!(d instanceof Date) || isNaN(d.getTime())) return "";
+    return d.toISOString().split("T")[0];
+  }
+
+  function isValidISODate(s) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(new Date(s).getTime());
+  }
+
+  function isValidTimeHHMM(s) {
+    if (!/^\d{2}:\d{2}$/.test(s)) return false;
+    const [h, m] = s.split(":").map(Number);
+    return h >= 0 && h <= 23 && m >= 0 && m <= 59;
+  }
+
 
   // Define special service subtypes
   const specialServiceSubtypes = [
@@ -323,7 +347,32 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
     }
   }, [initialCustomerId]);
 
+  function validateAppointmentBeforeCreate() {
+    // PRICE — always required
+    if (!servicePrice || isNaN(servicePrice) || Number(servicePrice) <= 0) {
+      showAlert(
+        "Price Required",
+        "Please enter a valid service price before creating an appointment."
+      );
+      return false;
+    }
+
+    // MYOCIDE — compliance required
+    if (serviceType === "myocide" && !complianceValidUntil) {
+      showAlert(
+        "Compliance Required",
+        "Compliance valid-until date is required for Myocide appointments."
+      );
+      return false;
+    }
+
+    return true;
+  }
+
   async function addCustomerToSchedule(customerId) {
+
+    if (!validateAppointmentBeforeCreate()) return;
+
     console.log("➕ Adding customer to schedule:", {
       customerId,
       selectedTech,
@@ -541,6 +590,27 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
   }
 
   async function removeCustomer(appointmentId) {
+    if (isWeb) {
+      const ok = window.confirm("Remove this appointment?");
+      if (!ok) return;
+
+      try {
+        const result = await apiService.deleteAppointment(appointmentId);
+        console.log("Delete result:", result);
+
+        if (result?.success) {
+          await loadAppointments();
+          onAppointmentChanged?.();
+        } else {
+          window.alert(result?.error || "Failed to delete appointment");
+        }
+      } catch (e) {
+        console.error(e);
+        window.alert("Failed to delete appointment");
+      }
+      return;
+    }
+
     Alert.alert(
       "Remove Appointment",
       "Are you sure you want to remove this appointment?",
@@ -550,34 +620,10 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
           text: "Remove",
           style: "destructive",
           onPress: async () => {
-            try {
-              const appointment = appointments.find(a => a.id === appointmentId);
-              
-              if (appointment && appointment.status === 'completed') {
-                Alert.alert(
-                  "Cannot Remove",
-                  "This appointment has already been completed and cannot be removed."
-                );
-                return;
-              }
-              
-              const result = await apiService.deleteAppointment(appointmentId);
-              
-              if (result?.success) {
-                await loadAppointments();
-                
-                // 🔥 Call the callback to notify parent/calendar
-                if (onAppointmentChanged) {
-                  onAppointmentChanged();
-                }
-                
-                Alert.alert("Success", "Appointment removed successfully");
-              } else {
-                Alert.alert("Error", result?.error || "Failed to delete appointment");
-              }
-            } catch (err) {
-              console.error("Delete appointment error:", err);
-              Alert.alert("Error", "Failed to delete appointment");
+            const result = await apiService.deleteAppointment(appointmentId);
+            if (result?.success) {
+              await loadAppointments();
+              onAppointmentChanged?.();
             }
           }
         }
@@ -585,46 +631,43 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
     );
   }
 
+
   async function cancelAppointment(appointmentId) {
+
+    if (isWeb) {
+      const ok = window.confirm("Cancel this appointment?");
+      if (!ok) return;
+
+      try {
+        const res = await apiService.cancelAppointment(appointmentId);
+        console.log("Cancel result:", res);
+
+        if (res?.success) {
+          await loadAppointments();
+          onAppointmentChanged?.();
+        } else {
+          window.alert(res?.error || "Failed to cancel appointment");
+        }
+      } catch (e) {
+        console.error(e);
+        window.alert("Failed to cancel appointment");
+      }
+      return;
+    }
+
     Alert.alert(
       "Cancel Appointment",
-      "This appointment will be marked as cancelled but kept for records. Continue?",
+      "This appointment will be marked as cancelled.",
       [
         { text: "Keep", style: "cancel" },
         {
           text: "Cancel Appointment",
           style: "destructive",
           onPress: async () => {
-            try {
-              const appointment = appointments.find(a => a.id === appointmentId);
-
-              if (!appointment) return;
-
-              if (appointment.status === "completed") {
-                Alert.alert(
-                  "Not Allowed",
-                  "Completed appointments cannot be cancelled."
-                );
-                return;
-              }
-
-              const res = await apiService.cancelAppointment(appointmentId);
-
-              if (!res?.success) {
-                return Alert.alert("Error", res?.error || "Failed to cancel appointment");
-              }
-
+            const res = await apiService.cancelAppointment(appointmentId);
+            if (res?.success) {
               await loadAppointments();
-              
-              // 🔥 Call the callback to notify parent/calendar
-              if (onAppointmentChanged) {
-                onAppointmentChanged();
-              }
-              
-              Alert.alert("Cancelled", "Appointment has been cancelled.");
-            } catch (err) {
-              console.error("Cancel appointment error:", err);
-              Alert.alert("Error", "Failed to cancel appointment");
+              onAppointmentChanged?.();
             }
           }
         }
@@ -710,28 +753,28 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
     setEditComplianceValidUntil(appointment.complianceValidUntil || appointment.compliance_valid_until || '');
     
     // Populate time
-    const appointmentTimeStr = appointment.time || appointment.appointment_time || "09:30";
-    setEditTime(appointmentTimeStr);
+    // Initialize edit time exactly like Create flow
+    const rawTime = appointment.time || appointment.appointment_time || "09:30";
 
-    if (appointmentTimeStr) {
-      const [hours, minutes] = appointmentTimeStr.split(':');
-      const date = new Date();
-      date.setHours(parseInt(hours) || 9);
-      date.setMinutes(parseInt(minutes) || 30);
-      setEditAppointmentTime(date);
-    }
-    
-    // Parse time for time picker - FIXED: Use appointmentTimeStr instead of appointmentTime
-    let hour = "09";
-    let minute = "30";
-    
-    if (appointmentTimeStr) {  // FIXED: Changed from appointmentTime to appointmentTimeStr
-      const timeMatch = appointmentTimeStr.match(/(\d{1,2}):(\d{2})/);
-      if (timeMatch) {
-        hour = timeMatch[1].padStart(2, '0');
-        minute = timeMatch[2].padStart(2, '0');
+    let hours = 9;
+    let minutes = 30;
+
+    if (typeof rawTime === "string") {
+      const match = rawTime.match(/^(\d{1,2}):(\d{2})/);
+      if (match) {
+        hours = Number(match[1]);
+        minutes = Number(match[2]);
       }
     }
+
+    const date = new Date();
+    date.setHours(hours);
+    date.setMinutes(minutes);
+    date.setSeconds(0);
+    date.setMilliseconds(0);
+
+    setEditAppointmentTime(date);
+    setEditTime(`${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`);
     
     // CRITICAL FIX: Find the technician ID - try ALL possible field names
     let technicianId = null;
@@ -771,8 +814,72 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
     setShowEditModal(true);
   }
 
+  function validateAppointmentBeforeEdit() {
+    // PRICE — always required
+    if (!editServicePrice || isNaN(editServicePrice) || Number(editServicePrice) <= 0) {
+      showAlert(
+        "Price Required",
+        "Please enter a valid service price before saving changes."
+      );
+      return false;
+    }
+
+    // TIME — required
+    if (!editTime || !/^\d{2}:\d{2}$/.test(editTime)) {
+      showAlert(
+        "Invalid Time",
+        "Please select a valid appointment time (HH:MM)."
+      );
+      return false;
+    }
+
+    // TECHNICIAN — required
+    if (!editTechnicianId) {
+      showAlert(
+        "Technician Required",
+        "Please select a technician for this appointment."
+      );
+      return false;
+    }
+
+    // MYOCIDE — compliance required
+    if (editServiceType === "myocide" && !editComplianceValidUntil) {
+      showAlert(
+        "Compliance Required",
+        "Compliance valid-until date is required for Myocide appointments."
+      );
+      return false;
+    }
+
+    // SPECIAL — subtype required
+    if (editServiceType === "special" && !editSpecialServiceSubtype) {
+      showAlert(
+        "Service Type Required",
+        "Please select a specific service type."
+      );
+      return false;
+    }
+
+    // SPECIAL → OTHER — pest name required
+    if (
+      editServiceType === "special" &&
+      editSpecialServiceSubtype === "other" &&
+      !editOtherPestName.trim()
+    ) {
+      showAlert(
+        "Pest Name Required",
+        "Please specify the pest name for 'Other' services."
+      );
+      return false;
+    }
+
+    return true;
+  }
+
   async function saveEditedDetails() {
     if (!editingAppointment || processing) return;
+
+    if (!validateAppointmentBeforeEdit()) return;
     
     setProcessing(true);
     
@@ -787,12 +894,6 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
     
     try {
       // Validate required fields
-      if (!editServicePrice || isNaN(editServicePrice) || Number(editServicePrice) <= 0) {
-        Alert.alert("Invalid Price", "Please enter a valid service price (greater than 0).");
-        setProcessing(false);
-        return;
-      }
-      
       if (!editTime.trim()) {
         Alert.alert("Error", "Please select appointment time");
         setProcessing(false);
@@ -801,12 +902,6 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
       
       if (!editTechnicianId) {
         Alert.alert("Error", "Please select a technician");
-        setProcessing(false);
-        return;
-      }
-      
-      if (editServiceType === "myocide" && !editComplianceValidUntil) {
-        Alert.alert("Missing compliance date", "Compliance valid-until date is required for Myocide services.");
         setProcessing(false);
         return;
       }
@@ -961,20 +1056,17 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
 };
 
  const handleEditTimeChange = (event, selectedTime) => {
-  setShowEditTimePicker(false);
-  if (selectedTime) {
-    setEditAppointmentTime(selectedTime);
-    
-    const hours = selectedTime.getHours().toString().padStart(2, '0');
-    const minutes = selectedTime.getMinutes().toString().padStart(2, '0');
-    const formattedTime = `${hours}:${minutes}`;
-    
-    setEditTime(formattedTime);
-    // REMOVE THESE LINES:
-    // setEditSelectedHour(hours);
-    // setEditSelectedMinute(minutes);
-  }
-};
+    setShowEditTimePicker(false);
+    if (selectedTime) {
+      setEditAppointmentTime(selectedTime);
+
+      const hours = selectedTime.getHours().toString().padStart(2, '0');
+      const minutes = selectedTime.getMinutes().toString().padStart(2, '0');
+      const formattedTime = `${hours}:${minutes}`;
+
+      setEditTime(formattedTime);
+    }
+  };
 
   const formatTime = (timeStr) => {
     if (!timeStr) return "";
@@ -1196,26 +1288,45 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
             </View>
           </TouchableOpacity>
 
-          {/* Centered compliance date picker */}
-          {showCompliancePicker && (
-            <View style={styles.timePickerContainer}> 
+          {/* COMPLIANCE DATE PICKER */}
+          {showCompliancePicker && !isWeb && (
+            <View style={styles.timePickerContainer}>
               <DateTimePicker
-                value={
-                  complianceValidUntil
-                    ? new Date(complianceValidUntil)
-                    : new Date()
-                }
+                value={complianceValidUntil ? new Date(complianceValidUntil) : new Date()}
                 mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                display={Platform.OS === "ios" ? "spinner" : "default"}
                 onChange={(event, date) => {
                   setShowCompliancePicker(false);
-                  if (date) {
-                    const formatted = date.toISOString().split("T")[0];
-                    setComplianceValidUntil(formatted);
-                  }
+                  if (date) setComplianceValidUntil(toISODate(date));
                 }}
                 style={styles.datePicker}
               />
+            </View>
+          )}
+
+          {showCompliancePicker && isWeb && (
+            <View style={{ marginHorizontal: 24, marginBottom: 16 }}>
+              <Text style={styles.detailsLabel}>
+                Compliance valid until (YYYY-MM-DD)
+              </Text>
+              <TextInput
+                style={[styles.detailsInput, { minHeight: 52 }]}
+                placeholder="2026-12-31"
+                value={complianceValidUntil}
+                onChangeText={setComplianceValidUntil}
+              />
+              <TouchableOpacity
+                style={{ marginTop: 10, alignSelf: "flex-end" }}
+                onPress={() => {
+                  if (serviceType === "myocide" && !isValidISODate(complianceValidUntil)) {
+                    alert("Invalid date format");
+                    return;
+                  }
+                  setShowCompliancePicker(false);
+                }}
+              >
+                <Text style={{ color: "#1f9c8b", fontWeight: "600" }}>Done</Text>
+              </TouchableOpacity>
             </View>
           )}
 
@@ -1272,7 +1383,8 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
           </TouchableOpacity>
         </View>
 
-        {showPicker && (
+        {/* CREATE DATE PICKER */}
+        {showPicker && !isWeb && (
           <DateTimePicker
             value={selectedDate}
             mode="date"
@@ -1284,8 +1396,31 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
           />
         )}
 
-        {showTimePicker && (
-          <View style={styles.timePickerContainer}> 
+        {showPicker && isWeb && (
+          <View style={{ marginHorizontal: 24, marginBottom: 16 }}>
+            <Text style={styles.detailsLabel}>Enter date (YYYY-MM-DD)</Text>
+            <TextInput
+              style={[styles.detailsInput, { minHeight: 52 }]}
+              placeholder="2026-01-31"
+              value={toISODate(selectedDate)}
+              onChangeText={(v) => {
+                if (isValidISODate(v)) {
+                  setSelectedDate(new Date(v));
+                }
+              }}
+            />
+            <TouchableOpacity
+              style={{ marginTop: 10, alignSelf: "flex-end" }}
+              onPress={() => setShowPicker(false)}
+            >
+              <Text style={{ color: "#1f9c8b", fontWeight: "600" }}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* CREATE TIME PICKER */}
+        {showTimePicker && !isWeb && (
+          <View style={styles.timePickerContainer}>
             <DateTimePicker
               value={appointmentTime}
               mode="time"
@@ -1295,6 +1430,31 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
               onChange={handleTimeChange}
               style={styles.datePicker}
             />
+          </View>
+        )}
+
+        {showTimePicker && isWeb && (
+          <View style={{ marginHorizontal: 24, marginBottom: 16 }}>
+            <Text style={styles.detailsLabel}>Enter time (HH:MM)</Text>
+            <TextInput
+              style={[styles.detailsInput, { minHeight: 52 }]}
+              placeholder="09:30"
+              value={time}
+              onChangeText={setTime}
+            />
+            <TouchableOpacity
+              style={{ marginTop: 10, alignSelf: "flex-end" }}
+              onPress={() => {
+                if (!isValidTimeHHMM(time)) {
+                  alert("Invalid time. Use HH:MM");
+                  console.log("Invalid time:", time);
+                  return;
+                }
+                setShowTimePicker(false);
+              }}
+            >
+              <Text style={{ color: "#1f9c8b", fontWeight: "600" }}>Done</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -2001,8 +2161,9 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
                     </View>
                   </TouchableOpacity>
                   
-                  {showEditTimePicker && (
-                    <View style={styles.timePickerContainer}> 
+                  {/* EDIT TIME PICKER */}
+                  {showEditTimePicker && !isWeb && (
+                    <View style={styles.timePickerContainer}>
                       <DateTimePicker
                         value={editAppointmentTime}
                         mode="time"
@@ -2010,8 +2171,32 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
                         is24Hour={true}
                         minuteInterval={5}
                         onChange={handleEditTimeChange}
-                        style={styles.datePicker}
                       />
+                    </View>
+                  )}
+
+                  {showEditTimePicker && isWeb && (
+                    <View style={{ marginTop: 10 }}>
+                      <Text style={styles.detailsLabel}>Enter time (HH:MM)</Text>
+                      <TextInput
+                        style={[styles.detailsInput, { minHeight: 52 }]}
+                        placeholder="09:30"
+                        value={editTime}
+                        onChangeText={setEditTime}
+                      />
+                      <TouchableOpacity
+                        style={{ marginTop: 10, alignSelf: "flex-end" }}
+                        onPress={() => {
+                          if (!isValidTimeHHMM(editTime)) {
+                            alert("Invalid time");
+                            console.log("Invalid edit time:", editTime);
+                            return;
+                          }
+                          setShowEditTimePicker(false);
+                        }}
+                      >
+                        <Text style={{ color: "#1f9c8b", fontWeight: "600" }}>Done</Text>
+                      </TouchableOpacity>
                     </View>
                   )}
                 </View>

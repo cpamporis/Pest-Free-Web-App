@@ -38,6 +38,13 @@ export default function AdminTechCalendarPreview() {
     { id: "emergency", label: "Emergency Call-Out" },
     { id: "contract_service", label: "Contract / Recurring Service" },
   ];
+  const visibleAppointments = appointments.filter(a => {
+    const time = getApptTime(a);
+    if (!time) return false;
+
+    const hour = parseInt(String(time).split(":")[0], 10);
+    return Number.isFinite(hour) && hour >= CALENDAR_START_HOUR && hour < CALENDAR_END_HOUR;
+  });
 
   useEffect(() => {
     loadTechnicians();
@@ -336,13 +343,7 @@ const getSpecialServiceLabel = (subtype) => {
     setWeekStart(getWeekStart(new Date()));
   };
 
-  const visibleAppointments = appointments.filter(a => {
-    const time = getApptTime(a);
-    if (!time) return false;
-
-    const hour = parseInt(String(time).split(":")[0], 10);
-    return Number.isFinite(hour) && hour >= CALENDAR_START_HOUR && hour < CALENDAR_END_HOUR;
-  });
+  
 
   const getTechnicianName = (appointment) => {
     if (!appointment) return '—';
@@ -589,12 +590,11 @@ const getSpecialServiceLabel = (subtype) => {
 
     return (
     <View style={styles.container}>
-        {/* Make the main container scrollable */}
-        <ScrollView 
-        style={styles.scrollContainer}
+      <ScrollView
+        style={{ flex: 1, width: '100%' }}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-        >
+        contentContainerStyle={{ flexGrow: 1 }}
+      >
         {/* HEADER */}
         <View style={styles.header}>
             <View style={styles.headerTop}>
@@ -741,13 +741,12 @@ const getSpecialServiceLabel = (subtype) => {
 
         {/* SIMPLIFIED CALENDAR - FIXED WIDTH FOR ALL DAYS */}
         <View style={styles.calendarWrapper}>
-            {/* Horizontal scroll container */}
-            <ScrollView 
-            horizontal 
+          <ScrollView
+            horizontal
             showsHorizontalScrollIndicator={true}
-            style={styles.calendarHorizontalScroll}
-            contentContainerStyle={styles.calendarHorizontalContent}
-            >
+            style={{ flex: 1, width: '100%' }}
+            contentContainerStyle={{ flexGrow: 1 }}
+          >
             <View style={styles.calendarGrid}>
                 {/* DAY HEADERS - Fixed width to show all days at once */}
                 <View style={styles.dayHeaders}>
@@ -862,14 +861,6 @@ const getSpecialServiceLabel = (subtype) => {
                 </ScrollView>
             </View>
             </ScrollView>
-            
-            {/* SCROLL HINT */}
-            <View style={styles.scrollHintContainer}>
-            <MaterialIcons name="swipe" size={16} color="#666" />
-            <Text style={styles.scrollHint}>
-                Drag calendar left/right to view • Swipe up/down for time slots
-            </Text>
-            </View>
         </View>
 
         {/* STATISTICS */}
@@ -1292,7 +1283,7 @@ weekNavCenter: {
   
   // CALENDAR WRAPPER (replaces calendarContainer)
   calendarWrapper: {
-    marginHorizontal: 24,
+    marginHorizontal: 0,
     marginBottom: 16,
     backgroundColor: "#fff",
     borderRadius: 16,
@@ -1314,11 +1305,13 @@ weekNavCenter: {
   },
   
   calendarHorizontalContent: {
-    minWidth: 1000, // Force horizontal scrolling
+    flexGrow: 1,
+    width: '100%',
   },
-  
+
   calendarGrid: {
-    minWidth: 1000, // Make sure all days fit
+    flex: 1,
+    width: '100%',
   },
   
   dayHeaders: {
@@ -1337,8 +1330,9 @@ weekNavCenter: {
     alignItems: "center",
   },
   
-  dayColumn: {  // Changed from dayHeader to dayColumn
-    width: 130, // Fixed width for each day column
+  dayColumn: {
+    flex: 1,
+    minWidth: 110,   // keeps readability on small screens
     padding: 12,
     alignItems: "center",
     justifyContent: "center",
@@ -1392,6 +1386,7 @@ weekNavCenter: {
   timeRow: {
     flexDirection: "row",
     minHeight: 70,
+    width: "100%",
     borderBottomWidth: 1,
     borderBottomColor: "#f8f9fa",
   },
@@ -1414,7 +1409,8 @@ weekNavCenter: {
   },
   
   timeCell: {
-    width: 130, // Same as dayColumn width
+    flex: 1,
+    minWidth: 110,
     padding: 4,
     backgroundColor: "#fff",
     minHeight: 68,

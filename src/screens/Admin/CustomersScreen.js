@@ -21,6 +21,8 @@ import pestfreeLogo from "../../../assets/pestfree_logo.png";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import CustomerProfile from "./CustomerProfile";
+import { useWindowDimensions } from "react-native";
+
 
 /* ===================== EXISTING MODALS ===================== */
 
@@ -96,6 +98,19 @@ function AddCustomerModal({ onClose, onSave }) {
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [telephone, setTelephone] = useState("");
+  const { height, width } = useWindowDimensions();
+  const modalHeight = (() => {
+    // Mobile phones
+    if (width < 480) return height * 0.9;
+
+    // Tablets
+    if (width < 1024) return height * 0.8;
+
+    // Desktop / Web
+    return height * 0.67;
+  })();
+
+
 
   // Map upload states
   const [showMapUpload, setShowMapUpload] = useState(false);
@@ -104,13 +119,45 @@ function AddCustomerModal({ onClose, onSave }) {
   const [uploadingMap, setUploadingMap] = useState(false);
 
   const selectImage = async () => {
-    try {
+  try {
+    if (Platform.OS === 'web') {
+      // Use HTML file input for web
+      return new Promise((resolve) => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.capture = 'environment'; // Use camera if available
+        input.onchange = async (event) => {
+          const file = event.target.files[0];
+          if (file) {
+            // Create a proper file URI for preview
+            const fileUrl = URL.createObjectURL(file);
+            
+            const selectedImage = {
+              uri: fileUrl,
+              type: file.type,
+              fileName: file.name,
+              file: file, // Keep the File object for FormData
+              fileSize: file.size,
+              isWebFile: true
+            };
+            
+            console.log('📸 Selected image (web):', selectedImage);
+            setSelectedImage(selectedImage);
+            resolve();
+          }
+        };
+        input.click();
+      });
+    } else {
+      // For mobile (Android/iOS)
       const result = await launchImageLibrary({
         mediaType: 'photo',
         quality: 0.8,
         maxWidth: 1920,
         maxHeight: 1920,
         selectionLimit: 1,
+        includeBase64: false,
       });
       
       if (result.didCancel) {
@@ -118,13 +165,27 @@ function AddCustomerModal({ onClose, onSave }) {
       } else if (result.errorCode) {
         Alert.alert('Error', result.errorMessage || 'Failed to pick image');
       } else if (result.assets && result.assets[0]) {
-        setSelectedImage(result.assets[0]);
+        const asset = result.assets[0];
+        
+        const selectedImage = {
+          uri: asset.uri,
+          type: asset.type || 'image/jpeg',
+          fileName: asset.fileName || `image_${Date.now()}.jpg`,
+          fileSize: asset.fileSize,
+          width: asset.width,
+          height: asset.height,
+          isWebFile: false
+        };
+        
+        console.log('📸 Selected image (mobile):', selectedImage);
+        setSelectedImage(selectedImage);
       }
-    } catch (error) {
-      console.error('Image picker error:', error);
-      Alert.alert('Error', 'Failed to access image library');
     }
-  };
+  } catch (error) {
+    console.error('Image picker error:', error);
+    Alert.alert('Error', 'Failed to access image library');
+  }
+};
 
   async function handleSave() {
     if (!customerName.trim()) {
@@ -192,61 +253,108 @@ function AddCustomerModal({ onClose, onSave }) {
   }
 
   const uploadMapImage = async () => {
-    if (!createdCustomer) {
-      Alert.alert("Error", "Customer must be created first");
-      return;
-    }
+  if (!selectedImage) {
+    Alert.alert('Error', 'Please select an image first');
+    return;
+  }
 
-    if (!selectedImage) {
-      Alert.alert("Error", "Please select an image");
-      return;
-    }
+  if (!mapName.trim()) {
+    Alert.alert('Error', 'Please enter a map name');
+    return;
+  }
 
-    if (!mapName.trim()) {
-      Alert.alert("Error", "Please enter a map name");
-      return;
-    }
-
-    setUploadingMap(true);
-
-    const formData = new FormData();
-    formData.append("image", {
-      uri: selectedImage.uri,
-      type: selectedImage.type || "image/jpeg",
-      name: selectedImage.fileName || `map_${Date.now()}.jpg`,
+  setUploadingMap(true);
+  
+  try {
+    const token = await AsyncStorage.getItem("authToken");
+    const customerIdToUse = customer?.customerId || createdCustomer?.customerId;
+    
+    console.log('🔑 Upload details:', {
+      tokenExists: !!token,
+      customerId: customerIdToUse,
+      mapName: mapName.trim(),
+      selectedImageType: selectedImage.isWebFile ? 'web-file' : 'mobile-uri'
     });
-    formData.append("customerId", createdCustomer.customerId);
-    formData.append("mapName", mapName.trim());
 
-    try {
-      const token = await AsyncStorage.getItem("authToken");
-
-      const response = await fetch(`${API_BASE_URL}/upload-image`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
+    // Create FormData
+    const formData = new FormData();
+    
+    formData.append('customerId', customerIdToUse);
+    formData.append('mapName', mapName.trim());
+    
+    // Handle web vs mobile differently
+    if (selectedImage.isWebFile) {
+      // Web: Use the File object directly
+      formData.append('image', selectedImage.file, selectedImage.fileName);
+    } else {
+      // Mobile: Use the standard format
+      formData.append('image', {
+        uri: selectedImage.uri,
+        name: selectedImage.fileName,
+        type: selectedImage.type || 'image/jpeg',
       });
-
-
-      const result = await response.json();
-
-      if (result.success) {
-        Alert.alert("Success", "Map uploaded successfully");
-
-        setSelectedImage(null);
-        setMapName("");
-        setShowMapUpload(false);
-      } else {
-        Alert.alert("Error", result.error || "Upload failed");
-      }
-    } catch (error) {
-      Alert.alert("Error", "Failed to upload map");
-    } finally {
-      setUploadingMap(false);
     }
-  };
+
+    console.log('📦 FormData prepared with:', {
+      customerId: customerIdToUse,
+      mapName: mapName.trim(),
+      imageAppended: true
+    });
+
+    // Make the request
+    const response = await fetch(`${API_BASE_URL}/upload-image`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        // Don't set Content-Type, let browser handle it
+      },
+      body: formData,
+    });
+
+    console.log('📥 Upload response status:', response.status);
+    
+    const text = await response.text();
+    console.log('📥 Upload response text:', text);
+    
+    let result;
+    try {
+      result = text ? JSON.parse(text) : {};
+    } catch (parseError) {
+      console.error('❌ Failed to parse response:', parseError);
+      result = { success: false, error: 'Invalid JSON response' };
+    }
+
+    if (response.ok && result.success) {
+      Alert.alert("Success", "Map uploaded successfully!");
+      
+      // Reset form
+      setSelectedImage(null);
+      setMapName("");
+      setShowMapUpload(false);
+      
+      // Refresh maps list for EditCustomerModal
+      if (customer) {
+        setCustomerMaps(prev => [...prev, {
+          mapId: result.map.mapId,
+          name: result.map.name,
+          image: result.map.image,
+          customerId: result.map.customerId
+        }]);
+      }
+      
+    } else {
+      const errorMessage = result.error || `Upload failed with status ${response.status}`;
+      console.error('❌ Upload failed:', errorMessage);
+      Alert.alert("Error", errorMessage);
+    }
+
+  } catch (error) {
+    console.error('❌ Upload error:', error);
+    Alert.alert("Error", `Failed to upload: ${error.message}`);
+  } finally {
+    setUploadingMap(false);
+  }
+};
 
   return (
     <Modal animationType="slide" transparent visible>
@@ -257,7 +365,12 @@ function AddCustomerModal({ onClose, onSave }) {
           onPress={onClose}
         >
           <TouchableOpacity activeOpacity={1}>
-            <View style={styles.modalCard}>
+            <View
+              style={[
+                styles.modalCard,
+                { height: modalHeight }
+              ]}
+            >
               <View style={styles.modalHeader}>
                 <View style={styles.modalIconContainer}>
                   <MaterialIcons name="person-add" size={24} color="#fff" />
@@ -268,7 +381,13 @@ function AddCustomerModal({ onClose, onSave }) {
                 </Text>
               </View>
 
-              <ScrollView style={styles.modalForm} showsVerticalScrollIndicator={false}>
+              <ScrollView
+                style={styles.modalForm}
+                contentContainerStyle={{ paddingBottom: 40 }} // ✅ critical
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
+
                 <Text style={styles.sectionTitle}>Basic Information</Text>
                 
                 <View style={styles.inputContainer}>
@@ -385,21 +504,25 @@ function AddCustomerModal({ onClose, onSave }) {
                 {createdCustomer && showMapUpload && (
                   <View style={styles.mapUploadContainer}>
                     {selectedImage && (
-                      <View style={styles.imagePreviewContainer}>
-                        <Image
-                          source={{ uri: selectedImage.uri }}
-                          style={styles.imagePreview}
-                          resizeMode="contain"
-                        />
-                        <TouchableOpacity
-                          style={styles.changeImageBtn}
-                          onPress={() => setSelectedImage(null)}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={styles.changeImageText}>Change Image</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
+  <View style={styles.imagePreviewContainer}>
+    <Image
+      source={{ 
+        uri: selectedImage.uri,
+        cache: 'force-cache' // Optional: cache the image
+      }}
+      style={styles.imagePreview}
+      resizeMode="contain"
+      onError={(error) => console.error('Image preview error:', error.nativeEvent.error)}
+    />
+    <TouchableOpacity
+      style={styles.changeImageBtn}
+      onPress={() => setSelectedImage(null)}
+      activeOpacity={0.7}
+    >
+      <Text style={styles.changeImageText}>Change Image</Text>
+    </TouchableOpacity>
+  </View>
+)}
 
                     {!selectedImage && (
                       <TouchableOpacity
@@ -490,8 +613,8 @@ function AddCustomerModal({ onClose, onSave }) {
         </TouchableOpacity>
       </SafeAreaView>
     </Modal>
-  );
-}
+    );
+  }
 
 // UPDATED: EditCustomerModal with Image Upload (Gallery only)
 function EditCustomerModal({ customer, onClose, onSave }) {
@@ -500,6 +623,18 @@ function EditCustomerModal({ customer, onClose, onSave }) {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [telephone, setTelephone] = useState("");
+  const { height, width } = useWindowDimensions();
+  const modalHeight = (() => {
+    // Mobile phones
+    if (width < 480) return height * 0.9;
+
+    // Tablets
+    if (width < 1024) return height * 0.8;
+
+    // Desktop / Web
+    return height * 0.67;
+  })();
+
 
   
   // Map upload states
@@ -549,14 +684,48 @@ function EditCustomerModal({ customer, onClose, onSave }) {
   }, [customer.customerId]);
 
 
-  const selectImage = async () => {
-    try {
+
+
+const selectImage = async () => {
+  try {
+    if (Platform.OS === 'web') {
+      // Use HTML file input for web
+      return new Promise((resolve) => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.capture = 'environment'; // Use camera if available
+        input.onchange = async (event) => {
+          const file = event.target.files[0];
+          if (file) {
+            // Create a proper file URI for preview
+            const fileUrl = URL.createObjectURL(file);
+            
+            const selectedImage = {
+              uri: fileUrl,
+              type: file.type,
+              fileName: file.name,
+              file: file, // Keep the File object for FormData
+              fileSize: file.size,
+              isWebFile: true
+            };
+            
+            console.log('📸 Selected image (web):', selectedImage);
+            setSelectedImage(selectedImage);
+            resolve();
+          }
+        };
+        input.click();
+      });
+    } else {
+      // For mobile (Android/iOS)
       const result = await launchImageLibrary({
         mediaType: 'photo',
         quality: 0.8,
         maxWidth: 1920,
         maxHeight: 1920,
         selectionLimit: 1,
+        includeBase64: false,
       });
       
       if (result.didCancel) {
@@ -564,68 +733,131 @@ function EditCustomerModal({ customer, onClose, onSave }) {
       } else if (result.errorCode) {
         Alert.alert('Error', result.errorMessage || 'Failed to pick image');
       } else if (result.assets && result.assets[0]) {
-        setSelectedImage(result.assets[0]);
+        const asset = result.assets[0];
+        
+        const selectedImage = {
+          uri: asset.uri,
+          type: asset.type || 'image/jpeg',
+          fileName: asset.fileName || `image_${Date.now()}.jpg`,
+          fileSize: asset.fileSize,
+          width: asset.width,
+          height: asset.height,
+          isWebFile: false
+        };
+        
+        console.log('📸 Selected image (mobile):', selectedImage);
+        setSelectedImage(selectedImage);
       }
-    } catch (error) {
-      console.error('Image picker error:', error);
-      Alert.alert('Error', 'Failed to access image library');
     }
-  };
+  } catch (error) {
+    console.error('Image picker error:', error);
+    Alert.alert('Error', 'Failed to access image library');
+  }
+};
 
   const uploadMapImage = async () => {
-    if (!selectedImage) {
-      Alert.alert('Error', 'Please select an image first');
-      return;
-    }
+  if (!selectedImage) {
+    Alert.alert('Error', 'Please select an image first');
+    return;
+  }
 
-    if (!mapName.trim()) {
-      Alert.alert('Error', 'Please enter a map name');
-      return;
-    }
+  if (!mapName.trim()) {
+    Alert.alert('Error', 'Please enter a map name');
+    return;
+  }
 
-    setUploadingMap(true);
+  setUploadingMap(true);
+  
+  try {
+    const token = await AsyncStorage.getItem("authToken");
+    const customerIdToUse = customer?.customerId || createdCustomer?.customerId;
     
-    const formData = new FormData();
-    formData.append('image', {
-      uri: selectedImage.uri,
-      type: selectedImage.type || 'image/jpeg',
-      name: selectedImage.fileName || `map_${Date.now()}.jpg`,
+    console.log('🔑 Upload details:', {
+      tokenExists: !!token,
+      customerId: customerIdToUse,
+      mapName: mapName.trim(),
+      selectedImageType: selectedImage.isWebFile ? 'web-file' : 'mobile-uri'
     });
-    formData.append('customerId', customer.customerId);
+
+    // Create FormData
+    const formData = new FormData();
+    
+    formData.append('customerId', customerIdToUse);
     formData.append('mapName', mapName.trim());
-
-    try {
-      const token = await AsyncStorage.getItem("authToken");
-
-      const response = await fetch(`${API_BASE_URL}/upload-image`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
+    
+    // Handle web vs mobile differently
+    if (selectedImage.isWebFile) {
+      // Web: Use the File object directly
+      formData.append('image', selectedImage.file, selectedImage.fileName);
+    } else {
+      // Mobile: Use the standard format
+      formData.append('image', {
+        uri: selectedImage.uri,
+        name: selectedImage.fileName,
+        type: selectedImage.type || 'image/jpeg',
       });
-
-      const result = await response.json();
-
-      if (result.success) {
-        setCustomerMaps(prev => [...prev, result.map]);
-
-        setSelectedImage(null);
-        setMapName("");
-        setShowMapUpload(false);
-
-        Alert.alert("Success", "Map added successfully!");
-      } else {
-        Alert.alert("Error", result.error || "Upload failed");
-      }
-
-    } catch (error) {
-      console.error('Upload error:', error);
-      Alert.alert('Error', 'Failed to upload image');
-    } finally {
-      setUploadingMap(false);
     }
-  };
+
+    console.log('📦 FormData prepared with:', {
+      customerId: customerIdToUse,
+      mapName: mapName.trim(),
+      imageAppended: true
+    });
+
+    // Make the request
+    const response = await fetch(`${API_BASE_URL}/upload-image`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        // Don't set Content-Type, let browser handle it
+      },
+      body: formData,
+    });
+
+    console.log('📥 Upload response status:', response.status);
+    
+    const text = await response.text();
+    console.log('📥 Upload response text:', text);
+    
+    let result;
+    try {
+      result = text ? JSON.parse(text) : {};
+    } catch (parseError) {
+      console.error('❌ Failed to parse response:', parseError);
+      result = { success: false, error: 'Invalid JSON response' };
+    }
+
+    if (response.ok && result.success) {
+      Alert.alert("Success", "Map uploaded successfully!");
+      
+      // Reset form
+      setSelectedImage(null);
+      setMapName("");
+      setShowMapUpload(false);
+      
+      // Refresh maps list for EditCustomerModal
+      if (customer) {
+        setCustomerMaps(prev => [...prev, {
+          mapId: result.map.mapId,
+          name: result.map.name,
+          image: result.map.image,
+          customerId: result.map.customerId
+        }]);
+      }
+      
+    } else {
+      const errorMessage = result.error || `Upload failed with status ${response.status}`;
+      console.error('❌ Upload failed:', errorMessage);
+      Alert.alert("Error", errorMessage);
+    }
+
+  } catch (error) {
+    console.error('❌ Upload error:', error);
+    Alert.alert("Error", `Failed to upload: ${error.message}`);
+  } finally {
+    setUploadingMap(false);
+  }
+};
 
   const removeMap = async (map) => {
     Alert.alert(
@@ -695,7 +927,12 @@ function EditCustomerModal({ customer, onClose, onSave }) {
           onPress={onClose}
         >
           <TouchableOpacity activeOpacity={1}>
-            <View style={styles.modalCard}>
+            <View
+              style={[
+                styles.modalCard,
+                { height: modalHeight }
+              ]}
+            >
               <View style={styles.modalHeader}>
                 <View style={styles.modalIconContainer}>
                   <MaterialIcons name="edit" size={24} color="#fff" />
@@ -706,7 +943,12 @@ function EditCustomerModal({ customer, onClose, onSave }) {
                 </Text>
               </View>
 
-              <ScrollView style={styles.modalForm} showsVerticalScrollIndicator={false}>
+              <ScrollView
+                style={styles.modalForm}
+                contentContainerStyle={{ paddingBottom: 40 }} // ✅ REQUIRED
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
                 <Text style={styles.sectionTitle}>Basic Information</Text>
                 
                 <View style={styles.inputContainer}>
@@ -801,21 +1043,25 @@ function EditCustomerModal({ customer, onClose, onSave }) {
                 {showMapUpload && (
                   <View style={styles.mapUploadContainer}>
                     {selectedImage && (
-                      <View style={styles.imagePreviewContainer}>
-                        <Image 
-                          source={{ uri: selectedImage.uri }}
-                          style={styles.imagePreview}
-                          resizeMode="contain"
-                        />
-                        <TouchableOpacity 
-                          style={styles.changeImageBtn}
-                          onPress={() => setSelectedImage(null)}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={styles.changeImageText}>Change Image</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
+  <View style={styles.imagePreviewContainer}>
+    <Image
+      source={{ 
+        uri: selectedImage.uri,
+        cache: 'force-cache' // Optional: cache the image
+      }}
+      style={styles.imagePreview}
+      resizeMode="contain"
+      onError={(error) => console.error('Image preview error:', error.nativeEvent.error)}
+    />
+    <TouchableOpacity
+      style={styles.changeImageBtn}
+      onPress={() => setSelectedImage(null)}
+      activeOpacity={0.7}
+    >
+      <Text style={styles.changeImageText}>Change Image</Text>
+    </TouchableOpacity>
+  </View>
+)}
 
                     {!selectedImage && (
                       <TouchableOpacity 
@@ -957,6 +1203,54 @@ function DeleteCustomerModal({ customerName, onClose, onConfirm }) {
     </Modal>
   );
 }
+function PermanentDeleteConfirmModal({ customer, onClose, onConfirm }) {
+  return (
+    <Modal animationType="fade" transparent visible>
+      <SafeAreaView style={styles.modalSafeArea}>
+        <TouchableOpacity 
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={onClose}
+        >
+          <TouchableOpacity activeOpacity={1}>
+            <View style={styles.confirmCard}>
+              <View style={styles.confirmIconContainer}>
+                <MaterialIcons name="warning" size={40} color="#1f9c8b" />
+              </View>
+              <Text style={[styles.confirmTitle, { color: '#1f9c8b' }]}>Permanent Delete</Text>
+              <Text style={styles.confirmText}>
+                Are you ABSOLUTELY sure you want to PERMANENTLY delete{" "}
+                <Text style={{ fontWeight: "bold", color: "#1f9c8b" }}>{customer?.customerName}</Text>?
+              </Text>
+              <Text style={[styles.confirmWarning, { color: '#1f9c8b' }]}>
+                This action CANNOT be undone! All customer data including appointments, maps, and stations will be permanently deleted.
+              </Text>
+
+              <View style={styles.confirmButtons}>
+                <TouchableOpacity
+                  style={[styles.confirmCancelButton, { borderColor: '#1f9c8b' }]}
+                  onPress={onClose}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.confirmCancelButtonText, { color: '#fff' }]}>Cancel</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.confirmDeleteButton, { backgroundColor: '#1f9c8b' }]}
+                  onPress={onConfirm}
+                  activeOpacity={0.7}
+                >
+                  <MaterialIcons name="delete-forever" size={18} color="#fff" />
+                  <Text style={styles.confirmDeleteButtonText}>Delete Forever</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </SafeAreaView>
+    </Modal>
+  );
+}
 
 /* ===================== MAIN SCREEN ===================== */
 
@@ -976,6 +1270,7 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
   const [showSelectForPermanentDelete, setShowSelectForPermanentDelete] = useState(false);
   const [deletedCustomers, setDeletedCustomers] = useState([]);
   const [showDeletedCustomers, setShowDeletedCustomers] = useState(false);
+  const [showPermanentDeleteConfirm, setShowPermanentDeleteConfirm] = useState(false);
   
 
   useEffect(() => {
@@ -1140,39 +1435,30 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
     }
   }
 
-  async function handlePermanentDeleteCustomer() {
-    if (!selectedCustomer) return;
+  async function handlePermanentDeleteCustomer(customer) {
+    console.log('Permanently deleting customer:', customer?.customerId);
     
-    Alert.alert(
-      "Permanent Delete",
-      `Are you ABSOLUTELY sure you want to PERMANENTLY delete "${selectedCustomer.customerName}"?\n\nThis action CANNOT be undone!`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Permanently Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const result = await apiService.permanentDeleteCustomer(selectedCustomer.customerId);
-              
-              if (result && result.success) {
-                Alert.alert("Success", "Customer permanently deleted");
-                setShowSelectForPermanentDelete(false);
-                setSelectedCustomer(null);
-                
-                // Refresh deleted customers list
-                await loadDeletedCustomers();
-              } else {
-                Alert.alert("Error", result?.error || "Failed to permanently delete customer");
-              }
-            } catch (error) {
-              console.error('Permanent delete customer error:', error);
-              Alert.alert("Error", error.message || "Failed to permanently delete customer");
-            }
-          }
-        }
-      ]
-    );
+    if (!customer) return;
+    
+    try {
+      const result = await apiService.permanentDeleteCustomer(customer.customerId);
+      
+      if (result && result.success) {
+        Alert.alert("Success", "Customer permanently deleted");
+        setShowPermanentDeleteConfirm(false);
+        setSelectedCustomer(null);
+        
+        // Refresh deleted customers list
+        await loadDeletedCustomers();
+        // Also refresh active customers list
+        await loadCustomers();
+      } else {
+        Alert.alert("Error", result?.error || "Failed to permanently delete customer");
+      }
+    } catch (error) {
+      console.error('Permanent delete customer error:', error);
+      Alert.alert("Error", error.message || "Failed to permanently delete customer");
+    }
   }
 
   // Calculate stats
@@ -1507,7 +1793,7 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
                         style={styles.permanentDeleteButton}
                         onPress={() => {
                           setSelectedCustomer(c);
-                          setShowSelectForPermanentDelete(true);
+                          setShowSelectForPermanentDelete(true); // Just open the selection modal
                         }}
                         activeOpacity={0.7}
                       >
@@ -1635,25 +1921,28 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
           title="Select Customer to Delete Permanently"
           subtitle="Warning: This action cannot be undone!"
           customers={deletedCustomers}
-          onClose={() => setShowSelectForPermanentDelete(false)}
+          onClose={() => {
+            setShowSelectForPermanentDelete(false);
+            setSelectedCustomer(null);
+          }}
           onSelect={(c) => {
             setSelectedCustomer(c);
-            Alert.alert(
-              "Confirm Permanent Delete",
-              `Are you ABSOLUTELY sure you want to PERMANENTLY delete "${c.customerName}"?\n\nThis will remove all customer data including appointments, maps, and stations.`,
-              [
-                { text: "Cancel", style: "cancel", onPress: () => setShowSelectForPermanentDelete(false) },
-                {
-                  text: "Delete Forever",
-                  style: "destructive",
-                  onPress: () => handlePermanentDeleteCustomer()
-                }
-              ]
-            );
+            setShowSelectForPermanentDelete(false); // Close selection modal
+            setShowPermanentDeleteConfirm(true); // Open confirmation modal
           }}
         />
       )}
 
+      {showPermanentDeleteConfirm && selectedCustomer && (
+        <PermanentDeleteConfirmModal
+          customer={selectedCustomer}
+          onClose={() => {
+            setShowPermanentDeleteConfirm(false);
+            setSelectedCustomer(null);
+          }}
+          onConfirm={() => handlePermanentDeleteCustomer(selectedCustomer)}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -1669,7 +1958,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollViewContent: {
-    paddingBottom: 40, // Extra padding at bottom for scrolling
+    paddingBottom: 40,
+    flexGrow: 1, // Extra padding at bottom for scrolling
   },
   
   // HEADER
@@ -2079,7 +2369,7 @@ actionCardDescription: {
   },
   modalOverlay: {
     flex: 1,
-    justifyContent: "center",
+    justifyContent: "flex-start",
     padding: 20,
   },
   modalCard: {
@@ -2088,6 +2378,7 @@ actionCardDescription: {
     maxHeight: "90%",
     maxWidth: 500,
     alignSelf: "center",
+    overflow: "hidden",
     width: "100%",
     shadowColor: "#000",
     shadowOffset: {
@@ -2129,6 +2420,7 @@ actionCardDescription: {
     textAlign: "center",
   },
   modalForm: {
+    flex: 1,
     padding: 24,
   },
   sectionTitle: {

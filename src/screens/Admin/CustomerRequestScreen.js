@@ -45,6 +45,7 @@ export default function CustomerRequestScreen({ onClose }) {
   const [insecticideDetails, setInsecticideDetails] = useState('');
   const [disinfectionDetails, setDisinfectionDetails] = useState('');
   const [otherPestName, setOtherPestName] = useState(selectedRequest?.other_pest_name || '');
+  const [processingDeclineId, setProcessingDeclineId] = useState(null);
   
   const [showPasswordResetModal, setShowPasswordResetModal] = useState(false);
   const [newPassword, setNewPassword] = useState("");
@@ -276,84 +277,71 @@ export default function CustomerRequestScreen({ onClose }) {
   };
 
   const handleDecline = async (request) => {
-    Alert.alert(
-      "Decline Request",
-      `Decline request from ${request.customer_name}?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Decline",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              setProcessing(true);
-
-              if (request.type === 'password_recovery') {
-                await processPasswordRecoveryRequest(request);
-              } else if (request.type === 'reschedule_request') {
-                // Try BOTH methods to see which one works
-                if (request.original_appointment_id) {
-                  console.log("🔍 Testing API methods...");
-                  
-                  // Method 1: Try the full name
-                  if (apiService.updateAppointmentRescheduleStatus) {
-                    console.log("✅ Method 1 available");
-                    const result = await apiService.updateAppointmentRescheduleStatus(
-                      request.original_appointment_id,
-                      {
-                        action: "decline",
-                        adminNotes: "Reschedule request declined"
-                      }
-                    );
-                    
-                    if (result?.success) {
-                      console.log("✅ Method 1 succeeded");
-                    }
-                  } 
-                  // Method 2: Try the short name
-                  else if (apiService.updateRescheduleStatus) {
-                    console.log("✅ Method 2 available");
-                    const result = await apiService.updateRescheduleStatus(
-                      request.original_appointment_id,
-                      {
-                        action: "decline",
-                        adminNotes: "Reschedule request declined"
-                      }
-                    );
-                    
-                    if (result?.success) {
-                      console.log("✅ Method 2 succeeded");
-                    }
-                  }
-                  // Method 3: Fallback
-                  else {
-                    console.log("⚠️ No reschedule method found, using updateAppointment");
-                    await apiService.updateAppointment({
-                      id: request.original_appointment_id,
-                      status: 'scheduled'
-                    });
-                  }
-                }
-              } else {
-                await apiService.updateCustomerRequestStatus(
-                  request.id,
-                  "declined",
-                  null,
-                  "Service request declined"
-                );
-              }
-
-              loadData();
-            } catch (err) {
-              console.error("❌ Decline failed:", err);
-              Alert.alert("Error", err.message);
-            } finally {
-              setProcessing(false);
-            }
-          }
-        }
-      ]
+    const confirmed = window.confirm(
+      `Decline request from ${request.customer_name}?`
     );
+
+    if (!confirmed) return;
+
+    try {
+      setProcessingDeclineId(request.id);
+
+      if (request.type === 'password_recovery') {
+        await processPasswordRecoveryRequest(request);
+      }
+      else if (request.type === 'reschedule_request') {
+        if (request.original_appointment_id) {
+          await apiService.updateRescheduleStatus(
+            request.original_appointment_id,
+            {
+              action: "decline",
+              adminNotes: "Reschedule request declined"
+            }
+          );
+        }
+      }
+
+      const result = await apiService.updateCustomerRequestStatus(
+        request.id,
+        "declined",
+        null,
+        "Request declined by admin"
+      );
+
+      if (!result?.success) {
+        throw new Error(result?.error || "Failed to update request");
+      }
+
+      setRequests(prev => prev.filter(r => r.id !== request.id));
+
+      window.alert("Request has been declined");
+
+    } catch (err) {
+      console.error("❌ Decline failed:", err);
+      window.alert(err.message || "Failed to decline request");
+    } finally {
+      setProcessingDeclineId(null);
+    }
+  };
+
+  const closeAndRefresh = () => {
+    setShowAppointmentModal(false);
+    setSelectedRequest(null);
+
+    // Clear appointment-related state (important)
+    setAppointmentData({
+      technicianId: "",
+      date: "",
+      time: ""
+    });
+    setAppointmentPrice("");
+    setComplianceValidUntil("");
+    setSpecialServiceSubtype(null);
+    setOtherPestName("");
+    setInsecticideDetails("");
+    setDisinfectionDetails("");
+
+    loadData();
   };
 
   const serviceTypes = [
@@ -553,8 +541,7 @@ export default function CustomerRequestScreen({ onClose }) {
 
       if (appointmentResult.success) {
         const appointmentId = appointmentResult.data?.id || appointmentResult.id;
-        
-        // Update the customer request status
+
         await apiService.updateCustomerRequestStatus(
           selectedRequest.id,
           'accepted',
@@ -563,21 +550,17 @@ export default function CustomerRequestScreen({ onClose }) {
             ? 'Reschedule request approved'
             : 'Request accepted and appointment scheduled'
         );
-        
-        // Remove from list
+
         setRequests(prev => prev.filter(req => req.id !== selectedRequest.id));
-        
-        Alert.alert("Success", 
+
+        Alert.alert(
+          "Success",
           selectedRequest.type === 'reschedule_request'
             ? "Reschedule approved successfully!"
-            : "Appointment created successfully!",
-          [
-            { text: "OK", onPress: () => {
-              setShowAppointmentModal(false);
-              loadData(); // Refresh the list
-            }}
-          ]
+            : "Appointment created successfully!"
         );
+
+        closeAndRefresh();
       } else {
         throw new Error(appointmentResult.error || "Failed to create appointment");
       }
@@ -696,15 +679,12 @@ export default function CustomerRequestScreen({ onClose }) {
           "Reschedule approved - old appointment deleted"
         );
 
-        Alert.alert("Success", "Reschedule approved. Old appointment deleted, new appointment created.", [
-          {
-            text: "OK",
-            onPress: () => {
-              setShowAppointmentModal(false);
-              loadData(); // Refresh the list
-            }
-          }
-        ]);
+        Alert.alert(
+          "Success",
+          "Reschedule approved. Old appointment deleted, new appointment created."
+        );
+
+        closeAndRefresh();
       } else {
         throw new Error(rescheduleResult.error || "Failed to approve reschedule");
       }
@@ -1040,7 +1020,7 @@ export default function CustomerRequestScreen({ onClose }) {
                           <TouchableOpacity
                             style={styles.declineButton}
                             onPress={() => handleDecline(request)}
-                            disabled={processing}
+                            disabled={processingDeclineId === request.id}
                           >
                             <MaterialIcons name="close" size={16} color="#fff" />
                             <Text style={styles.declineButtonText}>Decline</Text>
@@ -1256,7 +1236,7 @@ export default function CustomerRequestScreen({ onClose }) {
                 showsVerticalScrollIndicator={true}
                 contentContainerStyle={styles.appointmentModalScrollContent}
               >
-                {/* Customer Info */}
+                {/* CUSTOMER INFO */}
                 <View style={styles.customerInfoHeader}>
                   <View style={styles.customerAvatar}>
                     <Text style={styles.customerAvatarText}>
@@ -1389,7 +1369,7 @@ export default function CustomerRequestScreen({ onClose }) {
                     </View>
                   </View>
                 ) : (
-                  /* SERVICE TYPE SELECTION - Only for NEW service requests */
+                  
                   <View style={styles.formGroup}>
                     <Text style={styles.formLabel}>Service Type</Text>
                     
@@ -1675,7 +1655,6 @@ export default function CustomerRequestScreen({ onClose }) {
                       <View style={styles.dateTimeTextContainer}>
                         <Text style={styles.dateTimeLabel}>Appointment Date</Text>
                         <Text style={styles.dateTimeValue}>
-                          {/* Format the date to show only YYYY-MM-DD */}
                           {formatDateOnly(appointmentData.date) || 'Select date'}
                         </Text>
                       </View>

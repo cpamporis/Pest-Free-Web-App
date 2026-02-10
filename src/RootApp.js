@@ -85,6 +85,8 @@ export default function RootApp() {
     setShowReport(true);
   };
 
+
+
   // 🧑 CUSTOMER FLOW
   if (loggedCustomer) {
     // 1️⃣ Customer Home
@@ -271,5 +273,9 @@ export default function RootApp() {
     }
   }
 
-  return null;
+  return (
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+      <Text>Loading…</Text>
+    </View>
+  );
 }

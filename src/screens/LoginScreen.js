@@ -329,6 +329,8 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginVertical: 16,
     alignItems: "center",
+    width: "60%",
+    alignSelf: "center",
   },
   modalCloseText: {
     color: "#fff",
