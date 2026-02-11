@@ -332,7 +332,8 @@ export default function CustomerHomeScreen({
                   <TouchableOpacity 
                     style={styles.markAllReadButton}
                     onPress={() => {
-                      console.log("DEBUG: Mark All button pressed");  // Add this for testing
+                      console.log("DEBUG: Mark All button pressed");
+                      // Directly call the function without setTimeout
                       home.markAllNotificationsAsRead();
                     }}
                   >

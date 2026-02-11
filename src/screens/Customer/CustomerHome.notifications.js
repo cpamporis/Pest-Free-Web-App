@@ -246,12 +246,23 @@ export const notificationTypes = {
 
   // Mark all notifications as read
   const markAllNotificationsAsRead = async ({
-    notifications,
-    setNotifications,
-    setNotificationCount
-  }) => {
-    console.log("DEBUG: markAllNotificationsAsRead FUNCTION STARTED");
+  notifications,
+  setNotifications,
+  setNotificationCount
+}) => {
+  console.log("DEBUG: markAllNotificationsAsRead FUNCTION STARTED");
+  
+  // For web, we need to use window.confirm instead of Alert.alert
+  if (typeof window !== 'undefined' && window.confirm) {
+    // Web environment - use window.confirm
+    const confirmed = window.confirm("Mark all notifications as read?");
     
+    if (confirmed) {
+      console.log("DEBUG: User confirmed Mark All via window.confirm");
+      await executeMarkAllAsRead({ notifications, setNotifications, setNotificationCount });
+    }
+  } else {
+    // Native environment - use Alert.alert
     Alert.alert(
       "Mark All as Read",
       "Mark all notifications as read?",
@@ -260,52 +271,60 @@ export const notificationTypes = {
         { 
           text: "Mark All", 
           onPress: async () => {
-            console.log("DEBUG: User confirmed Mark All");
-            try {
-              console.log("DEBUG: Marking all as read...");
-              
-              // Get all notification IDs
-              const allNotificationIds = notifications.map(n => n.id);
-              
-              // Update local state immediately
-              const updatedNotifications = notifications.map(notification => ({
-                ...notification,
-                isRead: true
-              }));
-              
-              setNotifications(updatedNotifications);
-              setNotificationCount(0);
-              
-              // Save all IDs to read storage
-              await AsyncStorage.setItem(
-                NOTIFICATIONS_READ_STORAGE_KEY,
-                JSON.stringify(allNotificationIds)
-              );
-              
-              // Call API to mark all as read
-              try {
-                const result = await apiService.markAllNotificationsAsRead();
-                console.log("✅ API mark all as read result:", result);
-                
-                if (!result?.success) {
-                  console.warn("⚠️ API call to mark all as read failed");
-                }
-              } catch (apiError) {
-                console.error("❌ API error marking all as read:", apiError);
-                // Continue anyway - local state is already updated
-              }
-              
-              console.log("✅ All notifications marked as read");
-              
-            } catch (error) {
-              console.error("❌ Error marking all as read:", error);
-              Alert.alert("Error", "Failed to mark all notifications as read");
-            }
+            console.log("DEBUG: User confirmed Mark All via Alert");
+            await executeMarkAllAsRead({ notifications, setNotifications, setNotificationCount });
           }
         }
       ]
     );
-  };
+  }
+};
+const executeMarkAllAsRead = async ({ notifications, setNotifications, setNotificationCount }) => {
+  try {
+    console.log("DEBUG: Executing mark all as read...");
+    
+    // Get all notification IDs
+    const allNotificationIds = notifications.map(n => n.id);
+    
+    // Update local state immediately
+    const updatedNotifications = notifications.map(notification => ({
+      ...notification,
+      isRead: true
+    }));
+    
+    setNotifications(updatedNotifications);
+    setNotificationCount(0);
+    
+    // Save all IDs to read storage
+    await AsyncStorage.setItem(
+      NOTIFICATIONS_READ_STORAGE_KEY,
+      JSON.stringify(allNotificationIds)
+    );
+    
+    // Call API to mark all as read
+    try {
+      const result = await apiService.markAllNotificationsAsRead();
+      console.log("✅ API mark all as read result:", result);
+      
+      if (!result?.success) {
+        console.warn("⚠️ API call to mark all as read failed");
+      }
+    } catch (apiError) {
+      console.error("❌ API error marking all as read:", apiError);
+      // Continue anyway - local state is already updated
+    }
+    
+    console.log("✅ All notifications marked as read");
+    
+  } catch (error) {
+    console.error("❌ Error marking all as read:", error);
+    if (typeof window !== 'undefined' && window.alert) {
+      window.alert("Failed to mark all notifications as read");
+    } else {
+      Alert.alert("Error", "Failed to mark all notifications as read");
+    }
+  }
+};
 
        // Clear all notifications
   const clearAllNotifications = async ({

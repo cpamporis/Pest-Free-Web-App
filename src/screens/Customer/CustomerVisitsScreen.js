@@ -1,4 +1,4 @@
-// CustomerVisitsScreen.js - FIXED VERSION
+// CustomerVisitsScreen.js - WEB FIXED VERSION (No Open Button)
 import React, { useEffect, useState } from "react";
 import {
   View,
@@ -10,10 +10,12 @@ import {
   RefreshControl,
   StatusBar,
   Alert,
+  Platform,
 } from "react-native";
 import apiService from "../../services/apiService";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { MaterialIcons, FontAwesome5, Ionicons, Feather } from '@expo/vector-icons';
+// Conditionally import native modules only on native platforms
 import * as Sharing from "expo-sharing";
 import * as FileSystem from 'expo-file-system/legacy';
 import { formatTimeInGreece, formatDateInGreece } from "../../utils/timeZoneUtils";
@@ -21,10 +23,7 @@ import { formatTimeInGreece, formatDateInGreece } from "../../utils/timeZoneUtil
 export default function CustomerVisitsScreen({ 
   onSelectVisit, 
   onBack
-  // REMOVE: navigation from props
 }) {
-
-  
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [visits, setVisits] = useState([]);
@@ -48,7 +47,6 @@ export default function CustomerVisitsScreen({
           // Fallback to timestamp
           const timestamp = item.startTime || item.created_at || item.service_start_time;
           if (timestamp) {
-            // Remove problematic characters
             return `time_${String(timestamp).replace(/[^a-zA-Z0-9]/g, '_')}`;
           }
           return null;
@@ -63,21 +61,13 @@ export default function CustomerVisitsScreen({
           
           if (!seenKeys.has(key)) {
             seenKeys.add(key);
-            // Add the key to the item for debugging
             item._key = key;
             uniqueVisits.push(item);
-          } else {
-            console.warn(`⚠️ Removed duplicate with key: ${key}`, item);
           }
         });
         
         console.log(`✅ Removed ${visits.length - uniqueVisits.length} duplicates`);
         console.log(`📊 Unique visits: ${uniqueVisits.length}`);
-        
-        // DEBUG: Log all unique items
-        uniqueVisits.forEach((item, idx) => {
-          console.log(`Unique ${idx}: key=${item._key}, service=${item.serviceType || item.service_type}, time=${item.startTime}`);
-        });
         
         setVisits(uniqueVisits);
       } else {
@@ -108,13 +98,12 @@ export default function CustomerVisitsScreen({
     return formatTimeInGreece(dateString);
   };
 
-
-  // Download PDF report
+  // ============= WEB-COMPATIBLE PDF DOWNLOAD =============
   const downloadPDFReport = async (visit) => {
     try {
-      setDownloadingId(visit.visitId); // Use visit.visitId
+      setDownloadingId(visit.visitId);
       
-      const reportId = visit.visitId; // Use visit.visitId
+      const reportId = visit.visitId;
       
       if (!reportId) {
         Alert.alert("Error", "No report ID found for this visit");
@@ -143,40 +132,92 @@ export default function CustomerVisitsScreen({
       console.log("📥 Downloading PDF:", {
         url: pdfUrl,
         serviceType: visit.serviceType || visit.workType,
-        visitId: reportId
+        visitId: reportId,
+        platform: Platform.OS
       });
-      
-      const downloadResult = await FileSystem.downloadAsync(
-        pdfUrl,
-        FileSystem.documentDirectory + fileName,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          }
-        }
-      );
-      
-      console.log("✅ Download result:", {
-        status: downloadResult.status,
-        uri: downloadResult.uri
-      });
-      
-      if (downloadResult.status === 200) {
-        if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(downloadResult.uri, {
-            mimeType: "application/pdf",
-            dialogTitle: "Service Report",
-            UTI: "com.adobe.pdf",
+
+      // ============ WEB PLATFORM ============
+      if (Platform.OS === 'web') {
+        try {
+          // Fetch the PDF as a blob
+          const response = await fetch(pdfUrl, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            }
           });
-        } else {
-          Alert.alert(
-            "Download Complete",
-            `The PDF report has been downloaded to:\n${downloadResult.uri}`,
-            [{ text: "OK" }]
-          );
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          const blob = await response.blob();
+          
+          // Create blob URL
+          const blobUrl = window.URL.createObjectURL(blob);
+          
+          // Create and trigger download
+          const link = document.createElement('a');
+          link.href = blobUrl;
+          link.download = fileName;
+          document.body.appendChild(link);
+          link.click();
+          
+          // Cleanup
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(blobUrl);
+          
+          console.log("✅ PDF downloaded on web platform");
+          
+        } catch (webError) {
+          console.error("❌ Web download error:", webError);
+          
+          // Fallback: Open in new tab
+          const fallbackUrl = `${pdfUrl}?token=${encodeURIComponent(token)}`;
+          window.open(fallbackUrl, '_blank');
+          
+          throw webError;
         }
-      } else {
-        throw new Error(`Download failed with status ${downloadResult.status}`);
+      } 
+      // ============ NATIVE PLATFORM (iOS/Android) ============
+      else {
+        try {
+          const downloadResult = await FileSystem.downloadAsync(
+            pdfUrl,
+            FileSystem.documentDirectory + fileName,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              }
+            }
+          );
+          
+          console.log("✅ Download result:", {
+            status: downloadResult.status,
+            uri: downloadResult.uri
+          });
+          
+          if (downloadResult.status === 200) {
+            if (await Sharing.isAvailableAsync()) {
+              await Sharing.shareAsync(downloadResult.uri, {
+                mimeType: "application/pdf",
+                dialogTitle: "Service Report",
+                UTI: "com.adobe.pdf",
+              });
+            } else {
+              Alert.alert(
+                "Download Complete",
+                `The PDF report has been downloaded to:\n${downloadResult.uri}`,
+                [{ text: "OK" }]
+              );
+            }
+          } else {
+            throw new Error(`Download failed with status ${downloadResult.status}`);
+          }
+        } catch (nativeError) {
+          console.error("❌ Native download error:", nativeError);
+          throw nativeError;
+        }
       }
       
     } catch (error) {
@@ -191,7 +232,6 @@ export default function CustomerVisitsScreen({
   };
 
   const generateUniqueKey = (item, index) => {
-    // Try all possible ID fields
     const possibleIds = [
       item.visitId,
       item.id,
@@ -205,13 +245,11 @@ export default function CustomerVisitsScreen({
       if (id) return `key_${id}`;
     }
     
-    // Generate a stable key using data properties
     const timestamp = item.startTime || item.created_at || item.service_start_time;
     if (timestamp) {
       return `key_${timestamp}_${index}`;
     }
     
-    // Last resort: index-based with component mount time
     return `key_${index}_${Math.random().toString(36).substr(2, 9)}`;
   };
 
@@ -249,17 +287,6 @@ export default function CustomerVisitsScreen({
   };
 
   const renderVisitItem = ({ item }) => {
-    // Debug time for non-myocide services
-    if (item.serviceType && 
-        !item.serviceType.includes('myocide') && 
-        !item.serviceType.includes('scheduled')) {
-      console.log("🔍 Visit time debug:", {
-        serviceType: item.serviceType,
-        startTime: item.startTime,
-        formatted: formatTimeInGreece(item.startTime)
-      });
-    }
-
     return (
       <TouchableOpacity
         style={styles.visitCard}
@@ -288,7 +315,6 @@ export default function CustomerVisitsScreen({
           <View style={styles.detailRow}>
             <MaterialIcons name="calendar-today" size={16} color="#666" />
             <Text style={styles.detailText}>
-              {/* UPDATE THIS LINE: */}
               {item.startTime 
                 ? formatDateInGreece(item.startTime)
                 : 'Date not available'}
@@ -298,7 +324,6 @@ export default function CustomerVisitsScreen({
           <View style={styles.detailRow}>
             <MaterialIcons name="schedule" size={16} color="#666" />
             <Text style={styles.detailText}>
-              {/* UPDATE THIS LINE: */}
               {item.startTime
                 ? formatTimeInGreece(item.startTime)
                 : 'Time not available'}
@@ -439,20 +464,16 @@ export default function CustomerVisitsScreen({
   );
 }
 
-// ===== UPDATED HELPER FUNCTIONS =====
+// Helper functions remain the same...
 const getServiceColor = (serviceType) => {
-  // All service types use the same beautiful blue-green color
   return '#1f9c8b';
 };
 
 const getServiceIcon = (serviceType) => {
   const type = String(serviceType || '').toLowerCase().trim();
   
-  // Map service types to icons
   if (type.includes('myocide') || type.includes('scheduled')) {
-    return 'pest-control-rodent'; // This is the computer mouse
-    // OR for rodent mouse, you could use:
-    // return 'mouse'; // This might be rodent mouse in some icon sets
+    return 'pest-control-rodent';
   } else if (type.includes('disinfection')) {
     return 'clean-hands';
   } else if (type.includes('insecticide')) {
@@ -475,7 +496,6 @@ const getServiceIcon = (serviceType) => {
 const formatServiceType = (serviceType) => {
   const type = String(serviceType || '').toLowerCase().trim();
   
-  // Map service types to display names
   if (type.includes('myocide') || type.includes('scheduled')) {
     return 'Myocide Service';
   } else if (type.includes('disinfection')) {
@@ -496,7 +516,6 @@ const formatServiceType = (serviceType) => {
     return 'Regular Service';
   }
   
-  // If we don't recognize it, capitalize it
   return type.charAt(0).toUpperCase() + type.slice(1) + ' Service';
 };
 

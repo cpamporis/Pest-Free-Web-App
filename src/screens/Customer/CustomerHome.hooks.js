@@ -28,6 +28,7 @@ export default function useCustomerHome({ customer, onLogout, onViewVisits }) {
   const [showAllNotifications, setShowAllNotifications] = useState(false);
   const [lastVisit, setLastVisit] = useState(null);
   const [loadingVisits, setLoadingVisits] = useState(false);
+  const isWeb = Platform.OS === 'web';
   
   
   // Service Request Form states
@@ -634,24 +635,30 @@ export default function useCustomerHome({ customer, onLogout, onViewVisits }) {
       console.log("📥 Reschedule request result:", result);
       
       if (result?.success) {
+        // Close modal first
+        setShowRescheduleModal(false);
+        setNewAppointmentDate("");
+        setNewAppointmentTime("");
+        setSelectedAppointment(null);
+        
+        // Force immediate refresh of appointments
+        await loadAppointments();
+        
+        // Also refresh dashboard to get updated next appointment
+        const dashboardResult = await apiService.getCustomerDashboard();
+        if (dashboardResult?.success) {
+          setDashboard(dashboardResult);
+        }
+        
+        // Show success message AFTER refreshing data
         Alert.alert(
           "Request Submitted",
           "Your reschedule request has been submitted. The admin will review it shortly.",
-          [
-            {
-              text: "OK",
-              onPress: () => {
-                setShowRescheduleModal(false);
-                setNewAppointmentDate("");
-                setNewAppointmentTime("");
-                setSelectedAppointment(null);
-                setAppointments([]);
-                loadAppointments();
-              }
-              
-            }
-          ]
+          [{ text: "OK" }] // No need for onPress callback since we already refreshed
         );
+        
+        console.log("✅ Data refreshed after reschedule");
+        
       } else {
         throw new Error(result?.error || "Failed to submit reschedule request");
       }
