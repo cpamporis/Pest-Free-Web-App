@@ -13,7 +13,6 @@ import {
 import { MaterialIcons, FontAwesome5 } from "@expo/vector-icons";
 import apiService from "../../services/apiService";
 
-
 export default function AdminTechCalendarPreview() {
   const [appointments, setAppointments] = useState([]);
   const [technicians, setTechnicians] = useState([]);
@@ -395,8 +394,6 @@ const getSpecialServiceLabel = (subtype) => {
     switch (status?.toLowerCase()) {
       case "completed":
         return "#1f9c8b";
-      case "in_progress":
-        return "#7E57C2";
       case "scheduled":  
         return "#1E88E5";
       case "cancelled":
@@ -410,8 +407,6 @@ const getSpecialServiceLabel = (subtype) => {
     switch (status?.toLowerCase()) {
       case "completed":
         return "Completed";
-      case "in_progress":
-        return "In Progress";
       case "scheduled":
         return "Scheduled";
       case "cancelled":
@@ -714,7 +709,7 @@ const getSpecialServiceLabel = (subtype) => {
         </View>
 
         <View style={styles.legendContainer}>
-            {['scheduled', 'in_progress', 'completed', 'cancelled'].map(status => (
+            {['scheduled', 'completed', 'cancelled'].map(status => (
             <View key={status} style={styles.legendItem}>
                 <View style={[styles.legendDot, { backgroundColor: getStatusColor(status) }]} />
                 <Text style={styles.legendText}>{getStatusLabel(status)}</Text>
@@ -893,136 +888,141 @@ const getSpecialServiceLabel = (subtype) => {
           </View>
           
         </ScrollView>
-        <Modal
-          visible={!!selectedAppointment}
-          transparent
-          animationType="fade"
-        >
-          {selectedAppointment && (
-            <TouchableOpacity
-              style={styles.modalOverlay}
-              activeOpacity={1}
-              onPress={() => setSelectedAppointment(null)}
+      <Modal
+        visible={!!selectedAppointment}
+        transparent
+        animationType="fade"
+      >
+        {selectedAppointment && (
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setSelectedAppointment(null)}
+          >
+            <ScrollView 
+              style={styles.modalScrollView}
+              contentContainerStyle={styles.modalScrollContent}
+              showsVerticalScrollIndicator={true}
+              bounces={false}
             >
-            <View style={styles.detailsCard}>
-
-              {(() => {
-                const compliance = getComplianceStatus(selectedAppointment);
-
-                const colors = {
-                  valid: '#1f9c8b',
-                  expired: '#F44336',
-                  unknown: '#9E9E9E'
-                };
-
-                return (
-                  <View
-                    style={{
-                      alignSelf: 'flex-start',
-                      paddingHorizontal: 10,
-                      paddingVertical: 4,
-                      borderRadius: 12,
-                      backgroundColor: colors[compliance.status],
-                      marginBottom: 8
-                    }}
-                  >
-                    <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>
-                      {compliance.label}
-                    </Text>
-                  </View>
-                );
-              })()}
-
-              <Text style={styles.detailsTitle}>Appointment Details</Text>
-
-              <DetailRow label="Date">
-                {formatDatePretty(selectedAppointment?.date)}
-              </DetailRow>
-
-              <DetailRow label="Time">
-                {formatTimeHHMM(selectedAppointment?.time)}
-              </DetailRow>
-
-              <DetailRow label="Customer">
-                {getCustomerLabel(selectedAppointment)}
-              </DetailRow>
-
-              <DetailRow label="Telephone">
-                {getCustomerPhone(selectedAppointment)}
-              </DetailRow>
-
-              <DetailRow label="Address">
+              <View style={styles.detailsCard}>
                 {(() => {
-                  const customerId =
-                    selectedAppointment?.customerId ||
-                    selectedAppointment?.legacyCustomerKey;
+                  const compliance = getComplianceStatus(selectedAppointment);
+                  const colors = {
+                    valid: '#1f9c8b',
+                    expired: '#F44336',
+                    unknown: '#9E9E9E'
+                  };
 
-                  const customer = customers.find(c => c.id === customerId);
-
-                  return customer?.address || '—';
+                  return (
+                    <View
+                      style={{
+                        alignSelf: 'flex-start',
+                        paddingHorizontal: 10,
+                        paddingVertical: 4,
+                        borderRadius: 12,
+                        backgroundColor: colors[compliance.status],
+                        marginBottom: 8
+                      }}
+                    >
+                      <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>
+                        {compliance.label}
+                      </Text>
+                    </View>
+                  );
                 })()}
-              </DetailRow>
 
-              {(() => {
-                const lastVisit = getLastCompletedVisit(selectedAppointment);
-                if (!lastVisit) return null;
+                <Text style={styles.detailsTitle}>Appointment Details</Text>
 
-                return (
-                  <DetailRow label="Last Visit">
-                    {formatDatePretty(lastVisit.date)}
-                    {" • "}
-                    {getServiceLabel(lastVisit.serviceType)}
+                <DetailRow label="Date">
+                  {formatDatePretty(selectedAppointment?.date)}
+                </DetailRow>
+
+                <DetailRow label="Time">
+                  {formatTimeHHMM(selectedAppointment?.time)}
+                </DetailRow>
+
+                <DetailRow label="Customer">
+                  {getCustomerLabel(selectedAppointment)}
+                </DetailRow>
+
+                <DetailRow label="Telephone">
+                  {getCustomerPhone(selectedAppointment)}
+                </DetailRow>
+
+                <DetailRow label="Address">
+                  {(() => {
+                    const customerId =
+                      selectedAppointment?.customerId ||
+                      selectedAppointment?.legacyCustomerKey;
+
+                    const customer = customers.find(c => c.id === customerId);
+
+                    return customer?.address || '—';
+                  })()}
+                </DetailRow>
+
+                {(() => {
+                  const lastVisit = getLastCompletedVisit(selectedAppointment);
+                  if (!lastVisit) return null;
+
+                  return (
+                    <DetailRow label="Last Visit">
+                      {formatDatePretty(lastVisit.date)}
+                      {" • "}
+                      {getServiceLabel(lastVisit.serviceType)}
+                    </DetailRow>
+                  );
+                })()}
+
+                <DetailRow label="Service Type">
+                  {getServiceLabel(
+                    selectedAppointment?.serviceType,
+                    selectedAppointment?.specialServiceSubtype,
+                    selectedAppointment?.otherPestName
+                  )}
+                </DetailRow>
+
+                <DetailRow label="Category">
+                  {getAppointmentCategoryLabel(selectedAppointment.appointmentCategory)}
+                </DetailRow>
+
+                <DetailRow label="Technician">
+                  {getTechnicianName(selectedAppointment)}
+                </DetailRow>
+
+                {/* SPECIAL SERVICE */}
+                {selectedAppointment?.serviceType === 'special' && (
+                  <DetailRow label="Special Service">
+                    {getServiceDetails(selectedAppointment)}
                   </DetailRow>
-                );
-              })()}
-
-              <DetailRow label="Service Type">
-                {getServiceLabel(
-                  selectedAppointment?.serviceType,
-                  selectedAppointment?.specialServiceSubtype,
-                  selectedAppointment?.otherPestName
                 )}
-              </DetailRow>
 
-              <DetailRow label="Category">
-                {getAppointmentCategoryLabel(selectedAppointment.appointmentCategory)}
-              </DetailRow>
+                {/* INSECTICIDE */}
+                {selectedAppointment?.serviceType === 'insecticide' && (
+                  <DetailRow label="Insecticide Details">
+                    {getServiceDetails(selectedAppointment)}
+                  </DetailRow>
+                )}
 
-              <DetailRow label="Technician">
-                {getTechnicianName(selectedAppointment)}
-              </DetailRow>
+                {/* DISINFECTION */}
+                {selectedAppointment?.serviceType === 'disinfection' && (
+                  <DetailRow label="Disinfection Details">
+                    {getServiceDetails(selectedAppointment)}
+                  </DetailRow>
+                )}
 
-              {/* SPECIAL SERVICE */}
-              {selectedAppointment?.serviceType === 'special' && (
-                <DetailRow label="Special Service">
-                  {getServiceDetails(selectedAppointment)}
-                </DetailRow>
-              )}
-
-              {/* INSECTICIDE */}
-              {selectedAppointment?.serviceType === 'insecticide' && (
-                <DetailRow label="Insecticide Details">
-                  {getServiceDetails(selectedAppointment)}
-                </DetailRow>
-              )}
-
-              {/* DISINFECTION */}
-              {selectedAppointment?.serviceType === 'disinfection' && (
-                <DetailRow label="Disinfection Details">
-                  {getServiceDetails(selectedAppointment)}
-                </DetailRow>
-              )}
-
-              <TouchableOpacity
-                style={styles.closeDetailsButton}
-                onPress={() => setSelectedAppointment(null)}
-              >
-                <Text style={styles.closeDetailsText}>Close</Text>
-              </TouchableOpacity>
-            </View>
+                <TouchableOpacity
+                  style={styles.closeDetailsButton}
+                  onPress={() => setSelectedAppointment(null)}
+                >
+                  <Text style={styles.closeDetailsText}>Close</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           </TouchableOpacity>
-          )}
-        </Modal>
+        )}
+      </Modal>
     </View>
     );
 }
@@ -1513,7 +1513,6 @@ weekNavCenter: {
   detailsCard: {
     backgroundColor: '#fff',
     marginHorizontal: 24,
-    marginTop: '30%',
     borderRadius: 16,
     padding: 20,
     elevation: 6,
@@ -1542,7 +1541,15 @@ weekNavCenter: {
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  modalScrollView: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  modalScrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
+    paddingVertical: 20,
   },
   appointmentCategory: {
     fontSize: 10,

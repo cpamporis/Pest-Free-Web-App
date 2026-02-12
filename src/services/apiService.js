@@ -593,101 +593,36 @@ async getTodayCustomerRequestsCount() {
     
     const result = await request("GET", `/customers/${id}`);
     
-    console.log("📱 getCustomerWithMaps RAW API result:", result);
-    console.log("📱 getCustomerWithMaps success check:", result?.success);
+    // Handle different response structures consistently
+    let customerData = null;
     
-    // Handle errors - FIXED: Only return null if result is null or undefined
-    if (!result) {
-      console.error("❌ No response from API");
-      return {
-        success: false,
-        hasCustomer: false,
-        customer: null
-      };
-    }
-    
-    // Check if API call failed - but success can be undefined for some endpoints
-    if (result.success === false) {
-      console.error("❌ API returned explicit failure:", result.error);
-      return {
-        success: false,
-        hasCustomer: false,
-        customer: null
-      };
-    }
-    
-    // Extract customer data - handle different structures
-    let customerData;
-    
-    // Case 1: Direct structure {success: true, data: {...}}
-    if (result.data && typeof result.data === 'object' && result.data.customerId) {
+    if (result?.success === true && result.data) {
+      // Format: {success: true, data: {...}}
       customerData = result.data;
-      console.log("✅ Using direct structure (result.data)");
-    }
-    // Case 2: Data is nested {data: {data: {...}}}
-    else if (result.data && result.data.data && result.data.data.customerId) {
-      customerData = result.data.data;
-      console.log("⚠️ Using nested structure (result.data.data)");
-    }
-    // Case 3: Response IS the customer data {customerId: ...}
-    else if (result.customerId) {
+    } else if (result?.customerId) {
+      // Format: direct customer object
       customerData = result;
-      console.log("✅ Using result as customer data");
-    }
-    // Case 4: Invalid structure
-    else {
+    } else if (result?.data?.customerId) {
+      // Format: {data: {...}}
+      customerData = result.data;
+    } else {
       console.error("❌ Invalid customer data structure:", result);
+      // Return a valid structure with empty maps array
       return {
-        success: false,
-        hasCustomer: false,
-        customer: null
+        customerId: id,
+        customerName: "Unknown Customer",
+        address: "",
+        email: "",
+        maps: []
       };
     }
-    
-    console.log("✅ Extracted customer data:", {
-      customerId: customerData.customerId,
-      customerName: customerData.customerName,
-      mapsCount: customerData.maps ? customerData.maps.length : 0
-    });
     
     // Ensure maps is always an array
-    let maps = customerData.maps;
-    
-    if (!Array.isArray(maps)) {
-      console.warn("⚠️ Maps is not an array, fixing:", maps);
-      
-      if (typeof maps === 'string') {
-        if (maps.toLowerCase() === 'no maps') {
-          maps = [];
-        } else {
-          try {
-            maps = JSON.parse(maps);
-          } catch (parseError) {
-            console.warn("⚠️ Failed to parse maps string:", parseError);
-            maps = [];
-          }
-        }
-      } else if (maps === null || maps === undefined) {
-        maps = [];
-      } else {
-        maps = [];
-      }
+    if (!Array.isArray(customerData.maps)) {
+      customerData.maps = [];
     }
     
-    const fixedCustomer = {
-      ...customerData,
-      maps: maps
-    };
-    
-    console.log("✅ Fixed customer data:", {
-      customerId: fixedCustomer.customerId,
-      customerName: fixedCustomer.customerName,
-      mapsCount: fixedCustomer.maps.length,
-      mapsIsArray: Array.isArray(fixedCustomer.maps)
-    });
-    
-    // CRITICAL FIX: Return the correct structure
-    return fixedCustomer; // ← Return JUST the customer object, not wrapped
+    return customerData; // ALWAYS return the customer object directly
   },
 
   // TECHNICIANS

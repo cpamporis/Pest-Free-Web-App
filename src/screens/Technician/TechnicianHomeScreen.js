@@ -422,40 +422,24 @@ export default function TechnicianHomeScreen({
   };
 
   const handleAppointmentSelect = async (appointment) => {
-    console.log("📋 Appointment details:", {
-      id: appointment.id,
-      status: appointment.status,
-      visit_id: appointment.visit_id
-    });
+  console.log("📋 Appointment details:", {
+    id: appointment.id,
+    status: appointment.status,
+    visit_id: appointment.visit_id
+  });
 
-    if (appointment.status === "cancelled") {
-      Alert.alert(
-        "Cancelled Appointment",
-        "This appointment has been cancelled and cannot be accessed."
-      );
-      return;
-    }
+  if (appointment.status === "cancelled") {
+    Alert.alert(
+      "Cancelled Appointment",
+      "This appointment has been cancelled and cannot be accessed."
+    );
+    return;
+  }
 
-    if (appointment.status === "completed") {
-      Alert.alert(
-        "Completed Appointment",
-        "This appointment is completed. You can view details, but you cannot edit it.",
-        [
-          {
-            text: "View Details",
-            onPress: async () => {
-              await proceedToAppointment(appointment, { viewOnly: true });
-            }
-          },
-          { text: "Cancel", style: "cancel" }
-        ]
-      );
-      return;
-    }
-
-    // scheduled / in_progress
-    await proceedToAppointment(appointment, { viewOnly: false });
-  };
+  // 🚨 REMOVED THE BLOCKING ALERT - Allow editing of completed appointments
+  // Just proceed directly to the appointment for ALL non-cancelled appointments
+  await proceedToAppointment(appointment, { viewOnly: false });
+};
 
   const proceedToAppointment = async (appointment, options = {}) => {
   const { viewOnly = false } = options;

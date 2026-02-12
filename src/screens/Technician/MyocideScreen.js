@@ -129,44 +129,11 @@ const markAppointmentCompleted = async (appointmentId, visitId, sessionRef) => {
 // ------------------ MAP SCREEN WITH TIMER ------------------
 
 function MapScreen({ customer, onBack, session, technician, onGenerateReport }) {
-
-  const [sessionVisitId, setSessionVisitId] = useState(
-    session?.visitId ?? null
-  );
-
-  console.log("=== 🚨 MyocideScreen DEBUG ===");
-  console.log("📱 Received props:", {
-    customerExists: !!customer,
-    customerName: customer?.customerName,
-    customerId: customer?.customerId,
-    sessionExists: !!session,
-    session: {
-      appointmentId: session?.appointmentId,
-      status: session?.status,
-      visitId: sessionVisitId,
-      fromAppointment: session?.fromAppointment,
-      serviceType: session?.serviceType
-    },
-    technicianExists: !!technician,
-    technicianName: technician?.name
-  });
-  
-  // Log the session object in detail
-  if (session) {
-    console.log("📋 Full session object:", JSON.stringify(session, null, 2));
-  }
-
-    // Add this near the top of your MapScreen function
-  console.log("🔍 SESSION DATA FOR REPORT:", {
-    sessionVisitId: sessionVisitId,
-    hasSession: !!session,
-    sessionType: session?.fromAppointment ? "appointment" : "manual",
-    appointmentId: session?.appointmentId
-  });
-  
+  // State declarations first
+  const [sessionVisitId, setSessionVisitId] = useState(session?.visitId ?? null);
   const [selectedMap, setSelectedMap] = useState(null);
   const [stations, setStations] = useState([]);
-  const [selectedStation, setSelectedStation] = useState(null); 
+  const [selectedStation, setSelectedStation] = useState(null);
   const [showMapDropdown, setShowMapDropdown] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [addingStation, setAddingStation] = useState(false);
@@ -176,34 +143,28 @@ function MapScreen({ customer, onBack, session, technician, onGenerateReport }) 
   const [offsetY, setOffsetY] = useState(0);
   const [saving, setSaving] = useState(false);
   const [loggedStations, setLoggedStations] = useState([]);
-  const [editStationType, setEditStationType] = useState("BS"); // BS | RM | ST
+  const [editStationType, setEditStationType] = useState("BS");
   const [showTypeDropdown, setShowTypeDropdown] = useState(false);
-  const isCompletedAppointment = session?.status === "completed";
-  const canEditCompletedVisit = Boolean(
-    sessionVisitId && session?.status === "completed"  
-  );
-  const [isEditCompletedVisit, setIsEditCompletedVisit] = useState(canEditCompletedVisit);
-  const [hasViewedReport, setHasViewedReport] = useState(false);
-  const [hasGeneratedReport, setHasGeneratedReport] = useState(false);
   const [notes, setNotes] = useState('');
   const [customerWithMaps, setCustomerWithMaps] = useState(null);
   const [loadingCustomer, setLoadingCustomer] = useState(false);
-  const customerMaps = useMemo(() => {
-    if (customerWithMaps && Array.isArray(customerWithMaps.maps)) {
-      return customerWithMaps.maps;
+  const { width: deviceWidth, height: deviceHeight } = Dimensions.get("window");
+  const webStyles = {
+    scrollContainer: {
+      height: '100vh',
+      overflowY: 'auto',
+      overflowX: 'hidden',
+      WebkitOverflowScrolling: 'touch',
+      position: 'relative',
+    },
+    contentContainer: {
+      minHeight: '100%',
+      display: 'flex',
+      flexDirection: 'column',
     }
-    if (normalizedCustomer && Array.isArray(normalizedCustomer.maps)) {
-      return normalizedCustomer.maps;
-    }
-    return [];
-  }, [customerWithMaps, normalizedCustomer]);
-
-
-
-
-
+  };
   
-  // TIMER STATES
+  // Timer states
   const [timerActive, setTimerActive] = useState(false);
   const [startTime, setStartTime] = useState(null);
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -213,29 +174,30 @@ function MapScreen({ customer, onBack, session, technician, onGenerateReport }) 
   const [imageError, setImageError] = useState(false);
   const [currentImageUri, setCurrentImageUri] = useState('');
   
-  // STATUS STATES
+  // Status states
   const [serviceStarted, setServiceStarted] = useState(false);
   const [serviceCompleted, setServiceCompleted] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const SERVER_BASE_URL = API_BASE_URL.replace("/api", ""); // http://192.168.1.71:3000
-  const isAppointmentSession =
-    Boolean(session?.fromAppointment) &&
-    session?.serviceType === "myocide" &&
+  const [hasGeneratedReport, setHasGeneratedReport] = useState(false);
+  
+  // Computed values
+  const isCompletedAppointment = session?.status === "completed";
+  const canEditCompletedVisit = Boolean(sessionVisitId && session?.status === "completed");
+  const [isEditCompletedVisit, setIsEditCompletedVisit] = useState(canEditCompletedVisit);
+  const isAppointmentSession = Boolean(session?.fromAppointment) && 
+    session?.serviceType === "myocide" && 
     session?.status !== "completed";
+  
+  const SERVER_BASE_URL = API_BASE_URL.replace("/api", "");
+  const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 });
 
-  console.log("📊 Edit flags:", {
-    isCompletedAppointment,
-    canEditCompletedVisit,
-    sessionVisitId: sessionVisitId,
-    isEditCompletedVisit
-  });
+  const onMapContainerLayout = (event) => {
+    const { width, height } = event.nativeEvent.layout;
+    setContainerDimensions({ width, height });
+    console.log("📏 Map container dimensions:", { width, height });
+  };
 
-  console.log("⚡ Calculated flags:", {
-    isCompletedAppointment,
-    canEditCompletedVisit,
-    hasVisitId: !!sessionVisitId
-  });
-
+  // ✅ 1. Define normalizedCustomer FIRST
   const normalizedCustomer = useMemo(() => {
     if (!customer) return null;
 
@@ -248,7 +210,67 @@ function MapScreen({ customer, onBack, session, technician, onGenerateReport }) 
     };
   }, [customer]);
 
+  // ✅ 2. THEN define customerMaps which depends on normalizedCustomer
+  const customerMaps = useMemo(() => {
+    if (customerWithMaps && Array.isArray(customerWithMaps.maps)) {
+      return customerWithMaps.maps;
+    }
+    if (normalizedCustomer && Array.isArray(normalizedCustomer.maps)) {
+      return normalizedCustomer.maps;
+    }
+    return [];
+  }, [customerWithMaps, normalizedCustomer]);
+
+  // ✅ 3. THEN define effectiveCustomer
   const effectiveCustomer = customerWithMaps ?? normalizedCustomer;
+
+  // Load customer data
+  useEffect(() => {
+    const loadCustomerData = async () => {
+      if (!normalizedCustomer?.customerId) return;
+      
+      setLoadingCustomer(true);
+      
+      try {
+        // getCustomerWithMaps should now ALWAYS return the customer object directly
+        const customerData = await apiService.getCustomerWithMaps(normalizedCustomer.customerId);
+        
+        // Ensure maps is an array
+        if (customerData && !Array.isArray(customerData.maps)) {
+          customerData.maps = [];
+        }
+        
+        setCustomerWithMaps(customerData);
+      } catch (error) {
+        console.error("❌ Error loading customer with maps:", error);
+        setCustomerWithMaps(normalizedCustomer);
+      } finally {
+        setLoadingCustomer(false);
+      }
+    };
+    
+    loadCustomerData();
+  }, [normalizedCustomer?.customerId]);
+
+  useEffect(() => {
+  // Add global styles for web scrolling
+    const style = document.createElement('style');
+    style.innerHTML = `
+      body, html {
+        margin: 0;
+        padding: 0;
+        overflow-x: hidden;
+      }
+      * {
+        box-sizing: border-box;
+      }
+    `;
+    document.head.appendChild(style);
+    
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
   
   // Log the first map details
   if (Array.isArray(customerMaps) && customerMaps.length > 0) {
@@ -657,44 +679,29 @@ function MapScreen({ customer, onBack, session, technician, onGenerateReport }) 
   };
 
   const handleCancelWork = () => {
-    Alert.alert(
-      "Cancel Work Session",
-      "Are you sure you want to cancel this work session? All unsaved station data will be lost.",
-      [
-        { 
-          text: "No, Continue Working", 
-          style: "cancel" 
-        },
-        { 
-          text: "Yes, Cancel Work", 
-          style: "destructive",
-          onPress: () => {
-            stopTimer();
-            setTimerActive(false);
-            setWorkStarted(false);
-            setShowSaveCancel(false);
-            setStartTime(null);
-            setElapsedTime(0);
-            
-            // Reset status indicators
-            setServiceStarted(false);
-            setServiceCompleted(false);
-            
-            if (timerRef.current) {
-                clearInterval(timerRef.current);
-                timerRef.current = null;
-            }
-
-            
-            Alert.alert(
-              "Work Cancelled", 
-              "Session cancelled. No data was saved.",
-              [{ text: "OK", onPress: () => {} }]
-            );
-          }
-        }
-      ]
-    );
+    // Use browser confirm for web
+    if (window.confirm(
+      "Cancel Work Session\n\nAre you sure you want to cancel this work session? All unsaved station data will be lost."
+    )) {
+      stopTimer();
+      setTimerActive(false);
+      setWorkStarted(false);
+      setShowSaveCancel(false);
+      setStartTime(null);
+      setElapsedTime(0);
+      
+      // Reset status indicators
+      setServiceStarted(false);
+      setServiceCompleted(false);
+      
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      
+      // Use browser alert for web
+      window.alert("Work Cancelled\n\nSession cancelled. No data was saved.");
+    }
   };
 
   // New useEffect for image loading - UPDATED
@@ -1289,20 +1296,42 @@ function MapScreen({ customer, onBack, session, technician, onGenerateReport }) 
   }, [isEditCompletedVisit, sessionVisitId, loggedStations.length, refreshKey]);
 
   const handleMapPress = (evt) => {
-    if (!addingStation || !selectedMap) return;
+    console.log("📍 Map clicked:", { 
+      addingStation, 
+      selectedMap: !!selectedMap,
+      x: evt.nativeEvent.locationX,
+      y: evt.nativeEvent.locationY 
+    });
+    
+    if (!addingStation || !selectedMap) {
+      console.log("❌ Not adding station or no map selected");
+      return;
+    }
 
     const x = evt.nativeEvent.locationX;
     const y = evt.nativeEvent.locationY;
 
+    // Calculate normalized coordinates (0-1 range)
+    const normalizedX = x / (deviceWidth * scale);
+    const normalizedY = y / (deviceWidth * scale);
+
+    console.log("📍 Adding station at:", { 
+      x: normalizedX, 
+      y: normalizedY,
+      deviceWidth,
+      scale
+    });
+
     const newStation = {
       id: getNextIdForType(editStationType),
       type: editStationType,
-      x: x / (deviceWidth * scale),
-      y: y / (deviceWidth * scale)
+      x: normalizedX,
+      y: normalizedY
     };
 
+    console.log("➕ New station:", newStation);
+
     setStations([...stations, newStation]);
-    setAddingStation(false);
   };
 
   if (loadingCustomer) {
@@ -1404,13 +1433,15 @@ function MapScreen({ customer, onBack, session, technician, onGenerateReport }) 
   }
 
   return (
+  <div style={webStyles.scrollContainer}>
     <KeyboardAvoidingView
       style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={Platform.OS === "ios" ? 110 : 0}
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-        <View style={styles.container}>
+        <div style={webStyles.contentContainer}>
+          <View style={styles.container}>
           {/* Top Bar with Timer */}
           <View style={styles.topButtons}>
             {editMode ? (
@@ -1457,6 +1488,7 @@ function MapScreen({ customer, onBack, session, technician, onGenerateReport }) 
             </TouchableOpacity>
           </View>
 
+          {/* Map Dropdown */}    
           {showMapDropdown && (
             <View style={styles.mapDropdown}>
               {customerMaps.map((map, index) => (
@@ -1470,180 +1502,196 @@ function MapScreen({ customer, onBack, session, technician, onGenerateReport }) 
               ))}
             </View>
           )}
-          <ScrollView
-            style={{ flex: 1 }}
-            maximumZoomScale={4}
-            minimumZoomScale={1}
-            showsHorizontalScrollIndicator={false}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
-            <View style={styles.mapContainer}>
+
+          {/* Map Container */}
+          <View style={{ flex: 1, width: '100%', alignItems: 'center' }}>
+            <View 
+              style={{ 
+                width: deviceWidth, 
+                height: deviceWidth,  // Square aspect ratio for map
+                position: 'relative',
+                backgroundColor: '#f5f5f5'
+              }}
+            >
               <PinchGestureHandler
-                onGestureEvent={(e) =>
-                  setScale(Math.max(1, Math.min(3, e.nativeEvent.scale)))
-                }
+                onGestureEvent={(e) => setScale(Math.max(1, Math.min(3, e.nativeEvent.scale)))}
               >
-                <Animated.View>
-                  <TouchableOpacity activeOpacity={1} onPress={handleMapPress}>
-                    {/* Show image only if we have a valid URI and no error */}
+                <Animated.View 
+                  style={{ 
+                    width: deviceWidth, 
+                    height: deviceWidth,
+                    transform: [{ scale }] 
+                  }}
+                >
+                  <TouchableOpacity 
+                    activeOpacity={1} 
+                    onPress={handleMapPress}
+                    style={{ 
+                      width: deviceWidth, 
+                      height: deviceWidth,
+                      position: 'relative'
+                    }}
+                  >
+                    {/* Image */}
                     {currentImageUri && !imageError ? (
-                      <Image
-                        source={{ uri: currentImageUri }}
-                        style={styles.map}
-                        resizeMode="contain"
-                        onLoad={() => console.log("✅ Image loaded:", currentImageUri)}
-                        onError={(e) => {
-                          console.error("❌ Image load failed:", e.nativeEvent.error);
-                          setImageError(true);
+                      <div 
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: deviceWidth,
+                          height: deviceWidth,
+                          cursor: addingStation ? 'crosshair' : 'default'
                         }}
-                      />
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (addingStation) {
+                            // Get click coordinates relative to the div
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const x = e.clientX - rect.left;
+                            const y = e.clientY - rect.top;
+                            
+                            // Create synthetic event object that matches handleMapPress expectation
+                            const syntheticEvent = {
+                              nativeEvent: {
+                                locationX: x,
+                                locationY: y
+                              }
+                            };
+                            
+                            handleMapPress(syntheticEvent);
+                          }
+                        }}
+                      >
+                        <img 
+                          src={currentImageUri}
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'contain',
+                            pointerEvents: 'none' // This allows clicks to pass through to parent div
+                          }}
+                          alt="Map"
+                        />
+                      </div>
                     ) : (
-                      <View style={styles.placeholderImage}>
-                        <Text>No Map Image</Text>
-                      </View>
+                      <div style={{
+                        width: deviceWidth,
+                        height: deviceWidth,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: '#e0e0e0',
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        cursor: addingStation ? 'crosshair' : 'default'
+                      }}
+                      onClick={(e) => {
+                        if (addingStation) {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const x = e.clientX - rect.left;
+                          const y = e.clientY - rect.top;
+                          
+                          handleMapPress({
+                            nativeEvent: {
+                              locationX: x,
+                              locationY: y
+                            }
+                          });
+                        }
+                      }}
+                      >
+                        <span>No Map Image</span>
+                      </div>
                     )}
-                    {stations.map((st, index) => {            
-                      const uniqueKey = `${st.type || "BS"}_${st.id}_${index}`;
-                      
+
+                    {/* Markers */}
+                    {stations.map((st, index) => {
                       const left = st.x * deviceWidth * scale;
                       const top = st.y * deviceWidth * scale;
-
+                      const label = getMarkerLabel(st);
+                      const size = getMarkerSize(label);
+                      
                       return (
-                        <View key={uniqueKey} style={styles.markerWrapper}> 
-                          <PanGestureHandler
-                            onGestureEvent={(evt) =>
-                              editMode &&
-                              startDrag(st.id, evt.nativeEvent.x, evt.nativeEvent.y)
+                        <div
+                          key={`${st.type || "BS"}_${st.id}_${index}`}
+                          style={{
+                            position: 'absolute',
+                            left: left - size/2,
+                            top: top - 14,
+                            width: size,
+                            height: 28,
+                            borderRadius: 14,
+                            backgroundColor: getStationColor(st.type || "BS", isStationCompleted(st.id, st.type || "BS")),
+                            opacity: isStationCompleted(st.id, st.type || "BS") ? 0.4 : 1,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            zIndex: 10 // Ensure markers are above the map
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation(); // 🚨 CRITICAL: Stop event from bubbling to map
+                            e.preventDefault();
+                            
+                            const stationType = st.type || "BS";
+                            console.log("🚨 Station clicked:", { stationId: st.id, stationType, editMode, removingStation });
+                            
+                             // EDIT MODE - REMOVE STATION
+                            if (editMode && removingStation) {
+                              console.log(`🗑️ Removing station ${stationType}${st.id}`);
+                              if ((st.type || "BS") === editStationType) {
+                                setStations(stations.filter(
+                                  s => !(s.id === st.id && (s.type || "BS") === (st.type || "BS"))
+                                ));
+                                // Optional: Auto-turn off remove mode after removing
+                                // setRemovingStation(false);
+                              }
+                              return;
                             }
-                          >
-                            <Animated.View
-                              style={[
-                                styles.marker,
-                                (() => {
-                                  const label = getMarkerLabel(st);
-                                  const size = getMarkerSize(label);
-                                  
-                                  // DEBUG: Check if station is completed
-                                  const isCompletedValue = isStationCompleted(st.id, st.type || "BS");
-                                  console.log(`🎯 Marker ${st.type || "BS"}${st.id} opacity check:`, {
-                                    stationId: st.id,
-                                    stationType: st.type,
-                                    isCompleted: isCompletedValue,
-                                    opacity: isCompletedValue ? 0.4 : 1
-                                  });
 
-                                  return {
-                                    left,
-                                    top,
-                                    opacity: isCompletedValue ? 0.4 : 1,
-                                    width: size,
-                                    height: 28,
-                                    borderRadius: 14,
-                                    backgroundColor: getStationColor(
-                                      st.type || "BS",
-                                      isCompletedValue
-                                    ),
-                                    transform: [
-                                      { translateX: -(size / 2) },
-                                      { translateY: -14 }
-                                    ],
-                                  };
-                                })()
-                              ]}
-                            >
-                              <TouchableOpacity
-                                style={{
-                                  width: "100%",
-                                  height: "100%",
-                                  justifyContent: "center",
-                                  alignItems: "center"
-                                }}
-                                onPress={() => {
-                                  const stationType = st.type || "BS";
-                                  
-                                  console.log("🚨 Station clicked:", {
-                                    stationId: st.id,
-                                    stationType: stationType
-                                  });
-                                  
-                                  // Debug the station data
-                                  debugStationData(st.id, stationType);
-                                  
-                                  // EDIT MODE (for completed visits)
-                                  if (isEditCompletedVisit) {
-                                    console.log("🚨 Setting selectedStation for edit mode");
-                                    setSelectedStation({ id: st.id, type: stationType });
-                                    return;
-                                  }
+                            // EDIT MODE (for completed visits)
+                            if (isEditCompletedVisit) {
+                              console.log("🚨 Setting selectedStation for edit mode");
+                              setSelectedStation({ id: st.id, type: stationType });
+                              return;
+                            }
 
-                                  // WORK MODE (timer running for new visits)
-                                  if (!editMode && workStarted) {
-                                    if (isStationCompleted(st.id, stationType)) {
-                                      const stationLabel = getStationLabel(stationType);
-                                      Alert.alert(
-                                        `Edit ${stationLabel}`,
-                                        `Are you sure you want to edit ${stationLabel} ${st.id}?`,
-                                        [
-                                          { text: "Cancel", style: "cancel" },
-                                          {
-                                            text: "I'm sure",
-                                            style: "destructive",
-                                            onPress: () =>
-                                              setSelectedStation({ id: st.id, type: stationType }),
-                                          },
-                                        ]
-                                      );
-                                    } else {
-                                      setSelectedStation({ id: st.id, type: stationType });
-                                    }
-                                    return;
-                                  }
+                            // WORK MODE (timer running for new visits)
+                            if (!editMode && workStarted) {
+                              if (isStationCompleted(st.id, stationType)) {
+                                const stationLabel = getStationLabel(stationType);
+                                if (window.confirm(`Edit ${stationLabel} ${st.id}?`)) {
+                                  setSelectedStation({ id: st.id, type: stationType });
+                                }
+                              } else {
+                                setSelectedStation({ id: st.id, type: stationType });
+                              }
+                              return;
+                            }
 
-                                  // Edit map – remove mode
-                                  if (editMode && removingStation) {
-                                    if ((st.type || "BS") !== editStationType) return;
-                                    setStations(stations.filter(
-                                      s => !(s.id === st.id && (s.type || "BS") === (st.type || "BS"))
-                                    ));
-                                    return;
-                                  }
-
-                                  // Not working yet
-                                  if (!workStarted && !editMode) {
-                                    Alert.alert("Info", "Start work first to log station data");
-                                  }
-                                }}
-                              >
-                                {(() => {
-                                  const label = getMarkerLabel(st);
-                                  const isLongLabel = label.length >= 4;
-
-                                  return (
-                                    <Text
-                                      style={[
-                                        styles.markerText,
-                                        isLongLabel && styles.markerTextSmall
-                                      ]}
-                                      numberOfLines={1}
-                                      adjustsFontSizeToFit
-                                      minimumFontScale={0.8}
-                                    >
-                                      {label}
-                                    </Text>
-                                  );
-                                })()}
-                              </TouchableOpacity>
-                            </Animated.View>
-                          </PanGestureHandler>
-                        </View>
+                            // Not working yet
+                            if (!workStarted && !editMode) {
+                              alert("Start work first to log station data");
+                            }
+                          }}
+                        >
+                          <span style={{
+                            color: 'white',
+                            fontSize: label.length >= 4 ? 10 : 12,
+                            fontWeight: 'bold'
+                          }}>
+                            {label}
+                          </span>
+                        </div>
                       );
                     })}
                   </TouchableOpacity>
                 </Animated.View>
               </PinchGestureHandler>
             </View>
-          </ScrollView>
+          </View>
 
           {editMode && (
             <View style={styles.editButtons}>
@@ -1858,6 +1906,20 @@ function MapScreen({ customer, onBack, session, technician, onGenerateReport }) 
           </View>
 
           {selectedStation && (workStarted || isEditCompletedVisit) && (
+            <div style={{
+                position: 'fixed',
+                bottom: 0,
+                left: 0,
+                right: 0,
+                backgroundColor: 'white',
+                borderTopLeftRadius: 20,
+                borderTopRightRadius: 20,
+                boxShadow: '0 -2px 10px rgba(0,0,0,0.1)',
+                padding: 20,
+                maxHeight: '80vh',
+                overflowY: 'auto',
+                zIndex: 1000
+              }}>
             <View style={styles.stationOverlay}>
               {selectedStation.type === "BS" && (
                 <BaitStationForm
@@ -1942,10 +2004,13 @@ function MapScreen({ customer, onBack, session, technician, onGenerateReport }) 
                 />
               )}
             </View>
+            </div>
           )}
         </View>
+        </div>
       </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
+    </div>
   );
 }
 
