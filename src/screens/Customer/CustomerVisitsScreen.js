@@ -1,4 +1,4 @@
-// CustomerVisitsScreen.js - WEB FIXED VERSION (No Open Button)
+//CustomerVisitsScreen.js
 import React, { useEffect, useState } from "react";
 import {
   View,
@@ -18,6 +18,7 @@ import { MaterialIcons, FontAwesome5, Ionicons, Feather } from '@expo/vector-ico
 // Conditionally import native modules only on native platforms
 import * as Sharing from "expo-sharing";
 import * as FileSystem from 'expo-file-system/legacy';
+// ADD THESE IMPORTS FOR ANDROID SAVE
 import { formatTimeInGreece, formatDateInGreece } from "../../utils/timeZoneUtils";
 
 export default function CustomerVisitsScreen({ 
@@ -98,137 +99,203 @@ export default function CustomerVisitsScreen({
     return formatTimeInGreece(dateString);
   };
 
-  // ============= WEB-COMPATIBLE PDF DOWNLOAD =============
+  // ============= FIXED PDF DOWNLOAD WITH ANDROID SAVE =============
   const downloadPDFReport = async (visit) => {
-    try {
-      setDownloadingId(visit.visitId);
-      
-      const reportId = visit.visitId;
-      
-      if (!reportId) {
-        Alert.alert("Error", "No report ID found for this visit");
-        return;
-      }
-      
-      const token = apiService.getCurrentToken();
-      if (!token) {
-        Alert.alert("Error", "Authentication required. Please login again.");
-        return;
-      }
-      
-      const dateStr = visit.startTime ? 
-        new Date(visit.startTime).toISOString().split('T')[0] : 
-        new Date().toISOString().split('T')[0];
-      
-      const safeName = (visit.customer_name || visit.customerName || 'customer')
-        .replace(/[^a-z0-9]/gi, '_')
-        .replace(/^_+|_+$/g, '');
-      
-      const fileName = `Service_Report_${safeName}_${dateStr}.pdf`;
-      
-      const API_BASE_URL = apiService.API_BASE_URL || "http://192.168.1.79:3000/api";
-      const pdfUrl = `${API_BASE_URL}/reports/pdf/${reportId}`;
-      
-      console.log("📥 Downloading PDF:", {
-        url: pdfUrl,
-        serviceType: visit.serviceType || visit.workType,
-        visitId: reportId,
-        platform: Platform.OS
-      });
+  try {
+    setDownloadingId(visit.visitId);
+    
+    const reportId = visit.visitId;
+    
+    if (!reportId) {
+      Alert.alert("Error", "No report ID found for this visit");
+      return;
+    }
+    
+    const token = apiService.getCurrentToken();
+    if (!token) {
+      Alert.alert("Error", "Authentication required. Please login again.");
+      return;
+    }
+    
+    const dateStr = visit.startTime ? 
+      new Date(visit.startTime).toISOString().split('T')[0] : 
+      new Date().toISOString().split('T')[0];
+    
+    const safeName = (visit.customer_name || visit.customerName || 'customer')
+      .replace(/[^a-z0-9]/gi, '_')
+      .replace(/^_+|_+$/g, '');
+    
+    const fileName = `Service_Report_${safeName}_${dateStr}.pdf`;
+    
+    const API_BASE_URL = apiService.API_BASE_URL || "http://192.168.1.79:3000/api";
+    const pdfUrl = `${API_BASE_URL}/reports/pdf/${reportId}`;
+    
+    console.log("📥 Downloading PDF:", {
+      url: pdfUrl,
+      serviceType: visit.serviceType || visit.workType,
+      visitId: reportId,
+      platform: Platform.OS
+    });
 
-      // ============ WEB PLATFORM ============
-      if (Platform.OS === 'web') {
-        try {
-          // Fetch the PDF as a blob
-          const response = await fetch(pdfUrl, {
-            method: 'GET',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-            }
-          });
-
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+    // ============ WEB PLATFORM ============
+    if (Platform.OS === 'web') {
+      try {
+        const response = await fetch(pdfUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
           }
+        });
 
-          const blob = await response.blob();
-          
-          // Create blob URL
-          const blobUrl = window.URL.createObjectURL(blob);
-          
-          // Create and trigger download
-          const link = document.createElement('a');
-          link.href = blobUrl;
-          link.download = fileName;
-          document.body.appendChild(link);
-          link.click();
-          
-          // Cleanup
-          document.body.removeChild(link);
-          window.URL.revokeObjectURL(blobUrl);
-          
-          console.log("✅ PDF downloaded on web platform");
-          
-        } catch (webError) {
-          console.error("❌ Web download error:", webError);
-          
-          // Fallback: Open in new tab
-          const fallbackUrl = `${pdfUrl}?token=${encodeURIComponent(token)}`;
-          window.open(fallbackUrl, '_blank');
-          
-          throw webError;
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
-      } 
-      // ============ NATIVE PLATFORM (iOS/Android) ============
-      else {
-        try {
-          const downloadResult = await FileSystem.downloadAsync(
-            pdfUrl,
-            FileSystem.documentDirectory + fileName,
-            {
-              headers: {
-                Authorization: `Bearer ${token}`,
-              }
+
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(blobUrl);
+        
+        console.log("✅ PDF downloaded on web platform");
+        Alert.alert("Success", "PDF downloaded successfully");
+        
+      } catch (webError) {
+        console.error("❌ Web download error:", webError);
+        const fallbackUrl = `${pdfUrl}?token=${encodeURIComponent(token)}`;
+        window.open(fallbackUrl, '_blank');
+        throw webError;
+      }
+    } 
+    // ============ ANDROID PLATFORM (FIXED - SAVE TO DOWNLOADS) ============
+    else if (Platform.OS === 'android') {
+      try {
+        // Use FileSystem.documentDirectory for Android
+        // This doesn't require special permissions
+        const fileUri = FileSystem.documentDirectory + fileName;
+        
+        console.log("📥 Downloading to Android:", fileUri);
+
+        const downloadResult = await FileSystem.downloadAsync(
+          pdfUrl,
+          fileUri,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
             }
+          }
+        );
+        
+        console.log("✅ Download result:", {
+          status: downloadResult.status,
+          uri: downloadResult.uri
+        });
+        
+        if (downloadResult.status === 200) {
+          // Show options dialog
+          Alert.alert(
+            "PDF Downloaded",
+            "What would you like to do?",
+            [
+              {
+                text: "Share",
+                onPress: async () => {
+                  if (await Sharing.isAvailableAsync()) {
+                    await Sharing.shareAsync(downloadResult.uri, {
+                      mimeType: "application/pdf",
+                      dialogTitle: "Share Service Report",
+                    });
+                  }
+                }
+              },
+              {
+                text: "Open",
+                onPress: async () => {
+                  if (await Sharing.isAvailableAsync()) {
+                    await Sharing.shareAsync(downloadResult.uri, {
+                      mimeType: "application/pdf",
+                      dialogTitle: "Open with...",
+                    });
+                  }
+                }
+              },
+              {
+                text: "OK",
+                style: "cancel"
+              }
+            ]
           );
           
-          console.log("✅ Download result:", {
-            status: downloadResult.status,
-            uri: downloadResult.uri
-          });
+          // Also show the file location
+          console.log("✅ PDF saved to:", downloadResult.uri);
           
-          if (downloadResult.status === 200) {
-            if (await Sharing.isAvailableAsync()) {
-              await Sharing.shareAsync(downloadResult.uri, {
-                mimeType: "application/pdf",
-                dialogTitle: "Service Report",
-                UTI: "com.adobe.pdf",
-              });
-            } else {
-              Alert.alert(
-                "Download Complete",
-                `The PDF report has been downloaded to:\n${downloadResult.uri}`,
-                [{ text: "OK" }]
-              );
-            }
-          } else {
-            throw new Error(`Download failed with status ${downloadResult.status}`);
-          }
-        } catch (nativeError) {
-          console.error("❌ Native download error:", nativeError);
-          throw nativeError;
+        } else {
+          throw new Error(`Download failed with status ${downloadResult.status}`);
         }
+      } catch (androidError) {
+        console.error("❌ Android download error:", androidError);
+        Alert.alert(
+          "Download Failed",
+          androidError.message || "The report could not be downloaded."
+        );
       }
-      
-    } catch (error) {
-      console.error("❌ PDF download error:", error);
-      Alert.alert(
-        "Download Failed",
-        error.message || "The report could not be downloaded."
-      );
-    } finally {
-      setDownloadingId(null);
     }
+    // ============ IOS PLATFORM ============
+    else {
+      try {
+        const downloadResult = await FileSystem.downloadAsync(
+          pdfUrl,
+          FileSystem.documentDirectory + fileName,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            }
+          }
+        );
+        
+        console.log("✅ Download result:", {
+          status: downloadResult.status,
+          uri: downloadResult.uri
+        });
+        
+        if (downloadResult.status === 200) {
+          if (await Sharing.isAvailableAsync()) {
+            await Sharing.shareAsync(downloadResult.uri, {
+              mimeType: "application/pdf",
+              dialogTitle: "Service Report",
+              UTI: "com.adobe.pdf",
+            });
+          } else {
+            Alert.alert(
+              "Download Complete",
+              `The PDF report has been downloaded to:\n${downloadResult.uri}`,
+              [{ text: "OK" }]
+            );
+          }
+        } else {
+          throw new Error(`Download failed with status ${downloadResult.status}`);
+        }
+      } catch (nativeError) {
+        console.error("❌ Native download error:", nativeError);
+        throw nativeError;
+      }
+    }
+    
+  } catch (error) {
+    console.error("❌ PDF download error:", error);
+    Alert.alert(
+      "Download Failed",
+      error.message || "The report could not be downloaded."
+    );
+  } finally {
+    setDownloadingId(null);
+  }
   };
 
   const generateUniqueKey = (item, index) => {
