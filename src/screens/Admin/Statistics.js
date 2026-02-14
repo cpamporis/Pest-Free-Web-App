@@ -1238,7 +1238,7 @@ export default function Statistics({ onClose }) {
                 {Object.entries(appointmentsByStatus).map(([status, count], index) => {
                   const total = Object.values(appointmentsByStatus).reduce((a, b) => a + b, 0);
                   const percentage = total > 0 ? (count / total * 100).toFixed(1) : 0;
-                  const colors = ['#b9cd63', '#1f9c8b', '#95a5a6',];
+                  const colors = [ '#1f9c8b', '#b9cd63', '#95a5a6',];
                   
                   return (
                     <View 
@@ -1265,7 +1265,7 @@ export default function Statistics({ onClose }) {
               {Object.entries(appointmentsByStatus).map(([status, count], index) => {
                 const total = Object.values(appointmentsByStatus).reduce((a, b) => a + b, 0);
                 const percentage = total > 0 ? (count / total * 100).toFixed(1) : 0;
-                const colors = ['#b9cd63', '#1f9c8b', '#95a5a6',];
+                const colors = [ '#1f9c8b', '#b9cd63', '#95a5a6',];
                 
                 return (
                   <StatusItem
@@ -1643,7 +1643,7 @@ function formatServiceType(serviceType) {
 
 function ServiceTypeCard({ name, revenue, appointments, percentage, index }) {
   const colors = ['#1f9c8b'];
-  const icons = ['pest-control-rodent', 'clean-hands', 'bug-report', 'star', 'build'];
+  const icons = ['star', 'clean-hands', 'bug-report', 'pest-control-rodent', 'build'];
   
   // Format the service name
   const formattedName = formatServiceType(name);
@@ -1793,7 +1793,7 @@ function StatusItem({ status, count, percentage, color }) {
 }
 
 function ServiceDistributionItem({ type, count, percentage, color, index }) {
-  const icons = ['pest-control-rodent', 'clean-hands', 'bug-report', 'star', 'build',];
+  const icons = ['star', 'clean-hands', 'bug-report', 'pest-control-rodent', 'build'];
   
   // Format the service type name
   const formattedType = formatServiceType(type);
