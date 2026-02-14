@@ -1004,8 +1004,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   logo: {
-    width: 120,
-    height: 50,
+    width: 360,
+    height: 150,
+    marginRight: 10,
+    marginLeft: -80, 
+    marginBottom: -10,
   },
   adminBadge: {
     flexDirection: "row",

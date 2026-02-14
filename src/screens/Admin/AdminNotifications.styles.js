@@ -49,9 +49,11 @@ export default StyleSheet.create({
     flex: 1,
   },
   logo: {
-    width: 120,
-    height: 50,
-    marginRight: 10, // Space between logo and badge
+    width: 360,
+    height: 150,
+    marginRight: 10,
+    marginLeft: -80, 
+    marginBottom: -10,
   },
   headerTitle: {
     fontSize: 20,

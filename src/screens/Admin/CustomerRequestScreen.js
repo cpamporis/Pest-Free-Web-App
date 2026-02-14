@@ -19,6 +19,8 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import apiService from "../../services/apiService";
 import pestfreeLogo from "../../../assets/pestfree_logo.png";
 import { incrementTodayRequests } from './Statistics';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.min.css';
 
 export default function CustomerRequestScreen({ onClose }) {
   const [requests, setRequests] = useState([]);
@@ -62,6 +64,9 @@ export default function CustomerRequestScreen({ onClose }) {
     { id: "emergency", label: "Emergency Call-Out" },
     { id: "contract_service", label: "Contract / Recurring Service" },
   ];
+  const [showCompliancePicker, setShowCompliancePicker] = useState(false);
+  const [showEditCompliancePicker, setShowEditCompliancePicker] = useState(false); // For edit mode if needed
+  const isWeb = Platform.OS === "web";
 
     const formatTime = (timeStr) => {
     if (!timeStr) return "";
@@ -589,6 +594,11 @@ export default function CustomerRequestScreen({ onClose }) {
     
     return subtypeLabels[subtype] || subtype;
   };
+
+  function toISODate(d) {
+    if (!(d instanceof Date) || isNaN(d.getTime())) return "";
+    return d.toISOString().split("T")[0];
+  }
 
   const handleDateChange = (event, selectedDate) => {
     setShowDatePicker(false);
@@ -1336,16 +1346,67 @@ export default function CustomerRequestScreen({ onClose }) {
                   <Text style={styles.formLabel}>
                     Compliance Valid Until {selectedRequest?.service_type === 'myocide' && <Text style={styles.requiredStar}>*</Text>}
                   </Text>
-                  <View style={styles.inputWithIcon}>
-                    <MaterialIcons name="verified" size={20} color="#666" style={styles.inputIcon} />
-                    <TextInput
-                      style={styles.formInput}
-                      placeholder={selectedRequest?.service_type === 'myocide' ? "YYYY-MM-DD (Required)" : "YYYY-MM-DD (Optional)"}
-                      value={complianceValidUntil}
-                      onChangeText={setComplianceValidUntil}
-                      placeholderTextColor="#999"
-                    />
-                  </View>
+                  
+                  {/* Compliance Date Button */}
+                  <TouchableOpacity
+                    style={styles.dateTimeButton}
+                    onPress={() => setShowCompliancePicker(true)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.dateTimeButtonContent}>
+                      <View style={[styles.dateTimeIcon, { backgroundColor: 'rgba(31, 156, 139, 0.1)' }]}>
+                        <MaterialIcons name="event-available" size={20} color="#1f9c8b" />
+                      </View>
+                      <View style={styles.dateTimeTextContainer}>
+                        <Text style={styles.dateTimeLabel}>Valid Until</Text>
+                        <Text style={styles.dateTimeValue}>
+                          {complianceValidUntil || "Select compliance date"}
+                        </Text>
+                      </View>
+                      <MaterialIcons name="calendar-today" size={20} color="#666" />
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* COMPLIANCE PICKER - Mobile */}
+                  {showCompliancePicker && !isWeb && (
+                    <View style={styles.timePickerContainer}>
+                      <DateTimePicker
+                        value={complianceValidUntil ? new Date(complianceValidUntil) : new Date()}
+                        mode="date"
+                        display={Platform.OS === "ios" ? "spinner" : "default"}
+                        onChange={(event, date) => {
+                          setShowCompliancePicker(false);
+                          if (date) setComplianceValidUntil(toISODate(date));
+                        }}
+                        style={styles.datePicker}
+                      />
+                    </View>
+                  )}
+
+                  {/* COMPLIANCE PICKER - Web */}
+                  {showCompliancePicker && isWeb && (
+                    <View style={styles.timePickerContainer}>
+                      <View style={styles.webDatePickerContainer}>
+                        <Text style={styles.detailsLabel}>Select Compliance Valid Until Date</Text>
+                        <DatePicker
+                          selected={complianceValidUntil ? new Date(complianceValidUntil) : new Date()}
+                          onChange={(date) => {
+                            setComplianceValidUntil(toISODate(date));
+                            setShowCompliancePicker(false);
+                          }}
+                          inline
+                          calendarClassName="custom-calendar"
+                        />
+                        <TouchableOpacity
+                          style={styles.timeDoneButton}
+                          onPress={() => setShowCompliancePicker(false)}
+                        >
+                          <Text style={styles.timeDoneButtonText}>Done</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
+                  
                   <Text style={styles.helpText}>
                     {selectedRequest?.service_type === 'myocide' 
                       ? 'Required for Myocide service compliance certificate' 
@@ -1662,7 +1723,8 @@ export default function CustomerRequestScreen({ onClose }) {
                     </View>
                   </TouchableOpacity>
                   
-                  {showDatePicker && (
+                  {/* DATE PICKER - Mobile */}
+                  {showDatePicker && !isWeb && (
                     <DateTimePicker
                       value={appointmentDate}
                       mode="date"
@@ -1671,6 +1733,33 @@ export default function CustomerRequestScreen({ onClose }) {
                       onChange={handleDateChange}
                       style={styles.datePicker}
                     />
+                  )}
+
+                  {/* DATE PICKER - Web */}
+                  {showDatePicker && isWeb && (
+                    <View style={styles.timePickerContainer}>
+                      <View style={styles.webDatePickerContainer}>
+                        <Text style={styles.detailsLabel}>Select Date</Text>
+                        <DatePicker
+                          selected={appointmentDate}
+                          onChange={(date) => {
+                            setAppointmentDate(date);
+                            const formattedDate = date.toISOString().split('T')[0];
+                            setAppointmentData(prev => ({ ...prev, date: formattedDate }));
+                            setShowDatePicker(false);
+                          }}
+                          inline
+                          calendarClassName="custom-calendar"
+                          minDate={new Date()}
+                        />
+                        <TouchableOpacity
+                          style={styles.timeDoneButton}
+                          onPress={() => setShowDatePicker(false)}
+                        >
+                          <Text style={styles.timeDoneButtonText}>Done</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
                   )}
                 </View>
 
@@ -1698,7 +1787,8 @@ export default function CustomerRequestScreen({ onClose }) {
                     </View>
                   </TouchableOpacity>
                   
-                  {showTimePicker && (
+                  {/* TIME PICKER - Mobile */}
+                  {showTimePicker && !isWeb && (
                     <DateTimePicker
                       value={appointmentTime}
                       mode="time"
@@ -1708,6 +1798,41 @@ export default function CustomerRequestScreen({ onClose }) {
                       onChange={handleTimeChange}
                       style={styles.datePicker}
                     />
+                  )}
+
+                  {/* TIME PICKER - Web */}
+                  {showTimePicker && isWeb && (
+                    <View style={styles.timePickerContainer}>
+                      <View style={styles.webTimePickerContainer}>
+                        <Text style={styles.detailsLabel}>Select Time</Text>
+                        <input
+                          type="time"
+                          value={appointmentData.time || ''}
+                          onChange={(e) => {
+                            setAppointmentData(prev => ({ ...prev, time: e.target.value }));
+                            setShowTimePicker(false);
+                          }}
+                          step="300"
+                          style={{
+                            width: '100%',
+                            padding: '12px',
+                            fontSize: '16px',
+                            borderRadius: '8px',
+                            border: '1px solid #e9ecef',
+                            backgroundColor: '#fff',
+                            marginBottom: '10px',
+                            fontFamily: 'System',
+                            outline: 'none',
+                          }}
+                        />
+                        <TouchableOpacity
+                          style={styles.timeDoneButton}
+                          onPress={() => setShowTimePicker(false)}
+                        >
+                          <Text style={styles.timeDoneButtonText}>Done</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
                   )}
                 </View>
 
@@ -1995,9 +2120,11 @@ const styles = StyleSheet.create({
     fontFamily: 'System',
   },
   logo: {
-    width: 120,
-    height: 50,
-    marginRight: 10, 
+    width: 360,
+    height: 150,
+    marginRight: 10,
+    marginLeft: -80, 
+    marginBottom: -10,
   },
   contentContainer: {
     flex: 1,
@@ -3023,5 +3150,51 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 0, // Let the input handle its own padding
     overflow: "hidden",
+  },
+  webDatePickerContainer: {
+    padding: 16,
+    width: '100%',
+    alignItems: 'center',
+  },
+  webTimePickerContainer: {
+    padding: 16,
+    width: '100%',
+  },
+  timePickerContainer: {
+    backgroundColor: '#fff',
+    marginTop: 10,
+    borderRadius: 10,
+    padding: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  timeDoneButton: {
+    backgroundColor: '#1f9c8b',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 16,
+    width: '100%',
+  },
+  timeDoneButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  detailsLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2c3e50',
+    marginBottom: 8,
+    fontFamily: 'System',
   },
 });

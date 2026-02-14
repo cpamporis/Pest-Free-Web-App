@@ -700,15 +700,7 @@ export default function Statistics({ onClose }) {
       >
         {/* PROFESSIONAL HEADER */}
         <View style={styles.header}>
-          <View style={styles.headerTop}>
-            <TouchableOpacity 
-              style={styles.closeButton} 
-              onPress={onClose}
-              activeOpacity={0.7}
-            >
-              <MaterialIcons name="arrow-back" size={22} color="#fff" />
-            </TouchableOpacity>
-            
+          <View style={styles.headerTop}>            
             <View style={styles.brandContainer}>
               <Image source={pestfreeLogo} style={styles.logo} resizeMode="contain" />
               <View style={styles.adminBadge}>
@@ -716,6 +708,14 @@ export default function Statistics({ onClose }) {
                 <Text style={styles.adminBadgeText}>ANALYTICS DASHBOARD</Text>
               </View>
             </View>
+    
+            <TouchableOpacity 
+              style={styles.closeButton} 
+              onPress={onClose}
+              activeOpacity={0.7}
+            >
+              <MaterialIcons name="close" size={22} color="#fff" />
+            </TouchableOpacity>
           </View>
 
           <View style={styles.headerContent}>
@@ -1885,8 +1885,11 @@ const styles = StyleSheet.create({
     marginLeft: 10,
   },
   logo: {
-    width: 120,
-    height: 50,
+    width: 360,
+    height: 150,
+    marginRight: 10,
+    marginLeft: -80, 
+    marginBottom: -10,
   },
   adminBadge: {
     flexDirection: "row",

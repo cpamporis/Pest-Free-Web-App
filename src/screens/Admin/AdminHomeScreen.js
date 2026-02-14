@@ -483,7 +483,7 @@ export default function AdminHomeScreen({ onLogout }) {
 
         {/* FOOTER */}
         <View style={styles.footer}>
-          <Text style={styles.footerText}>Pest - Free Admin System</Text>
+          <Text style={styles.footerText}>Pestify Admin System</Text>
           <Text style={styles.footerSubtext}>
             Version 1.0 • Last updated: {new Date().toLocaleDateString()}
           </Text>
@@ -635,8 +635,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   logo: {
-    width: 120,
-    height: 50,
+    width: 360,
+    height: 150,
+    marginRight: 10,
+    marginLeft: -80, 
+    marginBottom: -10,
   },
   adminBadge: {
     flexDirection: "row",

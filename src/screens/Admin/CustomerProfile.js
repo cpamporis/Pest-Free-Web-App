@@ -219,14 +219,6 @@ export default function CustomerProfile({ customer, onClose, onOpenReport }) {
             {/* HEADER */}
             <View style={styles.header}>
               <View style={styles.headerTop}>
-                <TouchableOpacity 
-                  style={styles.closeButton} 
-                  onPress={onClose}
-                  activeOpacity={0.7}
-                >
-                  <MaterialIcons name="arrow-back" size={22} color="#fff" />
-                </TouchableOpacity>
-                
                 <View style={styles.brandContainer}>
                   <Image source={pestfreeLogo} style={styles.logo} resizeMode="contain" />
                   <View style={styles.adminBadge}>
@@ -234,6 +226,14 @@ export default function CustomerProfile({ customer, onClose, onOpenReport }) {
                     <Text style={styles.adminBadgeText}>CUSTOMER PROFILE</Text>
                   </View>
                 </View>
+
+                <TouchableOpacity 
+                  style={styles.closeButton} 
+                  onPress={onClose}
+                  activeOpacity={0.7}
+                >
+                  <MaterialIcons name="close" size={22} color="#fff" />
+                </TouchableOpacity>
               </View>
 
               <View style={styles.headerContent}>
@@ -564,10 +564,10 @@ const styles = StyleSheet.create({
     fontFamily: 'System',
   },
   closeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: "rgba(255, 255, 255, 0.2)",
-    width: 36,
-    height: 36,
-    borderRadius: 18,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
@@ -602,8 +602,11 @@ const styles = StyleSheet.create({
     marginLeft: 10, // Add some left margin
   },
   logo: {
-    width: 120,
-    height: 50,
+    width: 360,
+    height: 150,
+    marginRight: 10,
+    marginLeft: -80, 
+    marginBottom: -10,
   },
   
   // STATS BAR
