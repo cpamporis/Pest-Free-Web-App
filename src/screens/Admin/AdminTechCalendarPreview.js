@@ -12,8 +12,14 @@ import {
 } from "react-native";
 import { MaterialIcons, FontAwesome5 } from "@expo/vector-icons";
 import apiService from "../../services/apiService";
+import i18n from "../../services/i18n";
+import { useWindowDimensions } from "react-native";
 
 export default function AdminTechCalendarPreview() {
+  const { width: screenWidth } = useWindowDimensions();
+  const TIME_COLUMN_WIDTH = 70;
+  const DAY_COLUMN_WIDTH = (screenWidth - TIME_COLUMN_WIDTH) / 7;
+  const TOTAL_CALENDAR_WIDTH = TIME_COLUMN_WIDTH + (DAY_COLUMN_WIDTH * 7);
   const [appointments, setAppointments] = useState([]);
   const [technicians, setTechnicians] = useState([]);
   const [selectedTech, setSelectedTech] = useState(null);
@@ -29,14 +35,15 @@ export default function AdminTechCalendarPreview() {
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [customers, setCustomers] = useState([]);
   const appointmentCategories = [
-    { id: "first_time", label: "First-Time Appointment" },
-    { id: "follow_up", label: "Follow-Up Visit" },
-    { id: "one_time", label: "One-Time Treatment" },
-    { id: "installation", label: "Installation Appointment" },
-    { id: "inspection", label: "Inspection / Assessment" },
-    { id: "emergency", label: "Emergency Call-Out" },
-    { id: "contract_service", label: "Contract / Recurring Service" },
+    { id: "first_time", label: i18n.t("admin.schedule.appointmentCategory.first_time") },
+    { id: "follow_up", label: i18n.t("admin.schedule.appointmentCategory.follow_up") },
+    { id: "one_time", label: i18n.t("admin.schedule.appointmentCategory.one_time") },
+    { id: "installation", label: i18n.t("admin.schedule.appointmentCategory.installation") },
+    { id: "inspection", label: i18n.t("admin.schedule.appointmentCategory.inspection") },
+    { id: "emergency", label: i18n.t("admin.schedule.appointmentCategory.emergency") },
+    { id: "contract_service", label: i18n.t("admin.schedule.appointmentCategory.contract_service") },
   ];
+  const horizontalScrollRef = useRef(null);
   const visibleAppointments = appointments.filter(a => {
     const time = getApptTime(a);
     if (!time) return false;
@@ -65,20 +72,37 @@ export default function AdminTechCalendarPreview() {
     if (!timeScrollRef.current) return;
     if (didAutoScrollRef.current) return;
 
-    const firstHour = getFirstAppointmentHour(visibleAppointments);
+    const todayStr = formatDateLocal(new Date());
 
-    // If there are no appointments, keep default at top (00:00)
+    const todaysAppointments = visibleAppointments.filter(a => {
+      const d = a.appointment_date || a.date;
+      return d === todayStr;
+    });
+
+    const firstHour = getFirstAppointmentHour(
+      todaysAppointments.length ? todaysAppointments : visibleAppointments
+    );
+
+    // Scroll horizontally to today's column
+    const today = new Date();
+    const todayIndex = today.getDay() === 0 ? 6 : today.getDay() - 1;
+    const DAY_COLUMN_WIDTH = Math.min(130, (screenWidth - 100) / 7);
+
+    horizontalScrollRef.current?.scrollTo({
+      x: todayIndex * DAY_COLUMN_WIDTH,
+      animated: false
+    });
+
     if (firstHour === null) return;
 
     const scrollIndex = Math.max(firstHour - CALENDAR_START_HOUR, 0);
     const yOffset = scrollIndex * TIME_ROW_HEIGHT;
 
-    // Two RAFs: ensures ScrollView content is measured and ready
     requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
         timeScrollRef.current?.scrollTo({ y: yOffset, animated: false });
         didAutoScrollRef.current = true;
-        });
+      });
     });
   }, [loading, timeScrollReady, visibleAppointments]);
 
@@ -181,7 +205,6 @@ export default function AdminTechCalendarPreview() {
         : [];
 
       setCustomers(list);
-      console.log("🧪 CUSTOMER IN STATE", list[0]);
     } catch (e) {
       console.error('Failed to load customers', e);
     }
@@ -208,26 +231,7 @@ export default function AdminTechCalendarPreview() {
       const appointmentsArray = Array.isArray(appts)
         ? appts
         : appts?.appointments || [];
-
-      // 🚨 DEBUG: Log ALL appointments to see patterns
-      console.log("🔍 Total appointments loaded:", appointmentsArray.length);
       
-      appointmentsArray.forEach((app, index) => {
-        if (app.serviceType === 'special' || app.serviceType === 'insecticide' || app.serviceType === 'disinfection') {
-          console.log(`📝 Appointment ${index} (${app.serviceType}):`, {
-            id: app.id,
-            serviceType: app.serviceType,
-            specialServiceSubtype: app.specialServiceSubtype || app.special_service_subtype,
-            otherPestName: app.otherPestName || app.other_pest_name,
-            disinfection_details: app.disinfection_details,
-            insecticideDetails: app.insecticideDetails || app.insecticide_details,
-            // Log ALL fields to see what's available
-            allFields: Object.keys(app).filter(k => 
-              typeof app[k] === 'string' && app[k].trim() !== ''
-            )
-          });
-        }
-      });
 
       const normalized = appointmentsArray.map(a => ({
         ...a,
@@ -260,16 +264,6 @@ export default function AdminTechCalendarPreview() {
       appointment.serviceType || 
       appointment.service_type || 
       '';
-    
-    console.log("🔍 getServiceDetails for appointment:", {
-      id: appointment.id,
-      serviceType,
-      otherPestName: appointment.otherPestName,
-      insecticideDetails: appointment.insecticideDetails,
-      disinfection_details: appointment.disinfection_details,
-      description: appointment.description,
-      isSpecialService: serviceType === 'special'
-    });
     
     // For SPECIAL SERVICE: Use customer's otherPestName (this is what customer typed in home screen)
     if (serviceType === 'special') {
@@ -313,17 +307,17 @@ export default function AdminTechCalendarPreview() {
 
 const getSpecialServiceLabel = (subtype) => {
   const labels = {
-    'grass_cutworm': 'Grass Cutworm',
-    'fumigation': 'Fumigation',
-    'termites': 'Termites',
-    'exclusion': 'Exclusion Service',
-    'snake_repulsion': 'Snake Repulsion',
-    'bird_control': 'Bird Control',
-    'bed_bugs': 'Bed Bugs',
-    'fleas': 'Fleas',
-    'plant_protection': 'Plant Protection',
-    'palm_weevil': 'Palm Weevil',
-    'other': 'Other'
+    'grass_cutworm': i18n.t("admin.schedule.specialSubtypes.grass_cutworm"),
+    'fumigation': i18n.t("admin.schedule.specialSubtypes.fumigation"),
+    'termites': i18n.t("admin.schedule.specialSubtypes.termites"),
+    'exclusion': i18n.t("admin.schedule.specialSubtypes.exclusion"),
+    'snake_repulsion': i18n.t("admin.schedule.specialSubtypes.snake_repulsion"),
+    'bird_control': i18n.t("admin.schedule.specialSubtypes.bird_control"),
+    'bed_bugs': i18n.t("admin.schedule.specialSubtypes.bed_bugs"),
+    'fleas': i18n.t("admin.schedule.specialSubtypes.fleas"),
+    'plant_protection': i18n.t("admin.schedule.specialSubtypes.plant_protection"),
+    'palm_weevil': i18n.t("admin.schedule.specialSubtypes.palm_weevil"),
+    'other': i18n.t("admin.schedule.specialSubtypes.other")
   };
   return labels[subtype] || subtype;
 };
@@ -406,39 +400,39 @@ const getSpecialServiceLabel = (subtype) => {
   const getStatusLabel = (status) => {
     switch (status?.toLowerCase()) {
       case "completed":
-        return "Completed";
+        return i18n.t("status.completed");
       case "scheduled":
-        return "Scheduled";
+        return i18n.t("status.scheduled");
       case "cancelled":
-        return "Cancelled";
+        return i18n.t("status.cancelled");
       default:
-        return "Unknown";
+        return i18n.t("status.unknown") || "Unknown";
     }
   };
 
   const getServiceLabel = (serviceType, specialSubtype, otherPestName) => {
   switch (serviceType) {
     case 'myocide':
-      return 'Myocide';
+      return i18n.t("serviceTypes.myocide");
     case 'insecticide':
-      return 'Insecticide';
+      return i18n.t("serviceTypes.insecticide");
     case 'disinfection':
-      return 'Disinfection';
+      return i18n.t("serviceTypes.disinfection");
     case 'special':
-      if (!specialSubtype) return 'Special Service';
+      if (!specialSubtype) return i18n.t("serviceTypes.special");
       
       const subtypeLabels = {
-        'grass_cutworm': 'Grass Cutworm',
-        'fumigation': 'Fumigation',
-        'termites': 'Termites',
-        'exclusion': 'Exclusion Service',
-        'snake_repulsion': 'Snake Repulsion',
-        'bird_control': 'Bird Control',
-        'bed_bugs': 'Bed Bugs',
-        'fleas': 'Fleas',
-        'plant_protection': 'Plant Protection',
-        'palm_weevil': 'Palm Weevil',
-        'other': otherPestName ? `Other: ${otherPestName}` : 'Other'
+        'grass_cutworm': i18n.t("admin.schedule.specialSubtypes.grass_cutworm"),
+        'fumigation': i18n.t("admin.schedule.specialSubtypes.fumigation"),
+        'termites': i18n.t("admin.schedule.specialSubtypes.termites"),
+        'exclusion': i18n.t("admin.schedule.specialSubtypes.exclusion"),
+        'snake_repulsion': i18n.t("admin.schedule.specialSubtypes.snake_repulsion"),
+        'bird_control': i18n.t("admin.schedule.specialSubtypes.bird_control"),
+        'bed_bugs': i18n.t("admin.schedule.specialSubtypes.bed_bugs"),
+        'fleas': i18n.t("admin.schedule.specialSubtypes.fleas"),
+        'plant_protection': i18n.t("admin.schedule.specialSubtypes.plant_protection"),
+        'palm_weevil': i18n.t("admin.schedule.specialSubtypes.palm_weevil"),
+        'other': otherPestName ? `${i18n.t("admin.schedule.specialSubtypes.other")}: ${otherPestName}` : i18n.t("admin.schedule.specialSubtypes.other")
       };
       
       return subtypeLabels[specialSubtype] || specialSubtype;
@@ -478,7 +472,7 @@ const getSpecialServiceLabel = (subtype) => {
     const customer = customers.find(c => c.id === customerId);
 
     if (!customer?.complianceValidUntil) {
-      return { status: 'unknown', label: 'Unknown' };
+      return { status: 'unknown', label: i18n.t("admin.calendar.compliance.unknown") };
     }
 
     const validUntil = new Date(customer.complianceValidUntil);
@@ -486,10 +480,10 @@ const getSpecialServiceLabel = (subtype) => {
     today.setHours(0, 0, 0, 0);
 
     if (validUntil >= today) {
-      return { status: 'valid', label: 'Compliant' };
+      return { status: 'valid', label: i18n.t("admin.calendar.compliance.valid") };
     }   
 
-    return { status: 'expired', label: 'Expired' };
+    return { status: 'expired', label: i18n.t("admin.calendar.compliance.expired") };
   };
 
   function getWeekStart(date) {
@@ -578,32 +572,33 @@ const getSpecialServiceLabel = (subtype) => {
     return (
       <SafeAreaView style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#1f9c8b" />
-        <Text style={styles.loadingText}>Loading Calendar...</Text>
+        <Text style={styles.loadingText}>{i18n.t("admin.calendar.loading")}</Text>
       </SafeAreaView>
     );
   }
 
     return (
     <View style={styles.container}>
-      <ScrollView
-        style={{ flex: 1, width: '100%' }}
+        {/* Make the main container scrollable */}
+        <ScrollView 
+        style={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ flexGrow: 1 }}
-      >
+        contentContainerStyle={styles.scrollContent}
+        >
         {/* HEADER */}
         <View style={styles.header}>
             <View style={styles.headerTop}>
                 <View style={styles.brandContainer}>
                     <View style={styles.badge}>
                         <MaterialIcons name="calendar-view-week" size={14} color="#fff" />
-                        <Text style={styles.badgeText}>WEEK VIEW</Text>
+                        <Text style={styles.badgeText}>{i18n.t("admin.calendar.header.badge")}</Text>
                     </View>
                 </View>
             </View>
 
             <View style={styles.headerContent}>
                 <Text style={styles.subtitle}>
-                    Technician schedule overview with status tracking
+                    {i18n.t("admin.calendar.header.subtitle")}
                 </Text>
             </View>
 
@@ -617,7 +612,7 @@ const getSpecialServiceLabel = (subtype) => {
                 activeOpacity={0.7}
                 >
                 <MaterialIcons name="chevron-left" size={20} color="#fff" />
-                <Text style={styles.navButtonText}>Prev</Text>
+                <Text style={styles.navButtonText}>{i18n.t("admin.calendar.navigation.prev")}</Text>
                 </TouchableOpacity>
             </View>
 
@@ -630,16 +625,16 @@ const getSpecialServiceLabel = (subtype) => {
                 >
                 <MaterialIcons name="today" size={16} color="#fff" />
                 <Text style={styles.currentWeekText} numberOfLines={1}>
-                    Week of{" "}
-                    {weekStart.toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    })}{" "}
-                    –{" "}
-                    {addDays(weekStart, 6).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
+                    {i18n.t("admin.calendar.navigation.weekOf", {
+                      start: weekStart.toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                      }),
+                      end: addDays(weekStart, 6).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })
                     })}
                 </Text>
                 </TouchableOpacity>
@@ -652,7 +647,7 @@ const getSpecialServiceLabel = (subtype) => {
                 onPress={handleNextWeek}
                 activeOpacity={0.7}
                 >
-                <Text style={styles.navButtonText}>Next</Text>
+                <Text style={styles.navButtonText}>{i18n.t("admin.calendar.navigation.next")}</Text>
                 <MaterialIcons name="chevron-right" size={20} color="#fff" />
                 </TouchableOpacity>
             </View>
@@ -662,7 +657,7 @@ const getSpecialServiceLabel = (subtype) => {
         {/* TECHNICIAN FILTER */}
         <View style={styles.sectionHeader}>
             <MaterialIcons name="filter-alt" size={20} color="#2c3e50" />
-            <Text style={styles.sectionTitle}>Filter by Technician</Text>
+            <Text style={styles.sectionTitle}>{i18n.t("admin.calendar.filter.title")}</Text>
         </View>
 
         <ScrollView 
@@ -705,7 +700,7 @@ const getSpecialServiceLabel = (subtype) => {
         {/* STATUS LEGEND */}
         <View style={styles.sectionHeader}>
             <MaterialIcons name="legend-toggle" size={20} color="#2c3e50" />
-            <Text style={styles.sectionTitle}>Status Legend</Text>
+            <Text style={styles.sectionTitle}>{i18n.t("admin.calendar.legend.title")}</Text>
         </View>
 
         <View style={styles.legendContainer}>
@@ -720,7 +715,7 @@ const getSpecialServiceLabel = (subtype) => {
         {/* CALENDAR GRID */}
         <View style={styles.sectionHeader}>
             <MaterialIcons name="grid-view" size={20} color="#2c3e50" />
-            <Text style={styles.sectionTitle}>Weekly Schedule</Text>
+            <Text style={styles.sectionTitle}>{i18n.t("admin.calendar.schedule.title")}</Text>
             <TouchableOpacity 
             style={styles.refreshButton} 
             onPress={handleRefresh}
@@ -736,17 +731,19 @@ const getSpecialServiceLabel = (subtype) => {
 
         {/* SIMPLIFIED CALENDAR - FIXED WIDTH FOR ALL DAYS */}
         <View style={styles.calendarWrapper}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={true}
-            style={{ flex: 1, width: '100%' }}
-            contentContainerStyle={{ flexGrow: 1 }}
-          >
-            <View style={styles.calendarGrid}>
+            {/* Horizontal scroll container */}
+            <ScrollView 
+              ref={horizontalScrollRef}
+              horizontal 
+              showsHorizontalScrollIndicator={true}
+              style={styles.calendarHorizontalScroll}
+              contentContainerStyle={[styles.calendarHorizontalContent, { minWidth: TOTAL_CALENDAR_WIDTH }]}
+            >
+            <View style={[styles.calendarGrid, { minWidth: TOTAL_CALENDAR_WIDTH }]}>
                 {/* DAY HEADERS - Fixed width to show all days at once */}
                 <View style={styles.dayHeaders}>
-                <View style={styles.timeColumnHeader}>
-                    <Text style={styles.columnHint}>TIME</Text>
+                <View style={[styles.timeColumnHeader, { width: TIME_COLUMN_WIDTH }]}>
+                    <Text style={styles.columnHint}>{i18n.t("admin.calendar.schedule.time")}</Text>
                 </View>
                 
                 {/* Day columns - now all visible */}
@@ -757,14 +754,15 @@ const getSpecialServiceLabel = (subtype) => {
                     
                     return (
                     <View 
-                        key={i} 
-                        style={[
+                      key={i} 
+                      style={[
                         styles.dayColumn,
+                        { width: DAY_COLUMN_WIDTH },
                         isToday && styles.todayColumn
-                        ]}
+                      ]}
                     >
                         <Text style={styles.dayName}>
-                        {day.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase()}
+                          {day.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase()}
                         </Text>
                         <Text style={[
                         styles.dayDate,
@@ -773,7 +771,7 @@ const getSpecialServiceLabel = (subtype) => {
                         {day.getDate()}
                         </Text>
                         <Text style={styles.dayMonth}>
-                        {day.toLocaleDateString('en-US', { month: 'short' })}
+                          {day.toLocaleDateString('en-US', { month: 'short' })}
                         </Text>
                     </View>
                     );
@@ -790,7 +788,7 @@ const getSpecialServiceLabel = (subtype) => {
                 {HOURS.map(hour => (
                     <View key={hour} style={styles.timeRow}>
                     {/* Time label */}
-                    <View style={styles.timeLabel}>
+                    <View style={[styles.timeLabel, { width: TIME_COLUMN_WIDTH }]}>
                         <Text style={styles.timeText}>
                         {hour.toString().padStart(2, '0')}:00
                         </Text>
@@ -808,11 +806,12 @@ const getSpecialServiceLabel = (subtype) => {
 
                         return (
                         <View 
-                            key={dayIndex} 
-                            style={[
+                          key={dayIndex} 
+                          style={[
                             styles.timeCell,
+                            { width: DAY_COLUMN_WIDTH },
                             dayIndex < 6 && styles.cellBorderRight
-                            ]}
+                          ]}
                         >
                             {cellAppointments.map((appointment, idx) => {
                             const statusColor = getStatusColor(appointment.status);
@@ -856,173 +855,193 @@ const getSpecialServiceLabel = (subtype) => {
                 </ScrollView>
             </View>
             </ScrollView>
+            
+            {/* SCROLL HINT */}
+            <View style={styles.scrollHintContainer}>
+            <MaterialIcons name="swipe" size={16} color="#666" />
+            <Text style={styles.scrollHint}>
+                {i18n.t("admin.calendar.schedule.scrollHint")}
+            </Text>
+            </View>
         </View>
 
         {/* STATISTICS */}
         <View style={styles.statsContainer}>
             <View style={styles.statItem}>
               <Text style={styles.statNumber}>{appointments.length}</Text>
-              <Text style={styles.statLabel}>Total</Text>
+              <Text style={styles.statLabel}>{i18n.t("admin.calendar.stats.total")}</Text>
             </View>
 
             <View style={styles.statItem}>
               <Text style={styles.statNumber}>
                 {appointments.filter(a => a.status === 'scheduled').length}
               </Text>
-              <Text style={styles.statLabel}>Scheduled</Text>
+              <Text style={styles.statLabel}>{i18n.t("admin.calendar.stats.scheduled")}</Text>
             </View>
 
             <View style={styles.statItem}>
               <Text style={styles.statNumber}>
                 {appointments.filter(a => a.status === 'completed').length}
               </Text>
-              <Text style={styles.statLabel}>Completed</Text>
+              <Text style={styles.statLabel}>{i18n.t("admin.calendar.stats.completed")}</Text>
             </View>
 
             <View style={styles.statItem}>
               <Text style={styles.statNumber}>
                 {appointments.filter(a => a.status === 'cancelled').length}
               </Text>
-              <Text style={styles.statLabel}>Cancelled</Text>
+              <Text style={styles.statLabel}>{i18n.t("admin.calendar.stats.cancelled")}</Text>
             </View>
           </View>
           
         </ScrollView>
-      <Modal
-        visible={!!selectedAppointment}
-        transparent
-        animationType="fade"
-      >
-        {selectedAppointment && (
-          <TouchableOpacity
-            style={styles.modalOverlay}
-            activeOpacity={1}
-            onPress={() => setSelectedAppointment(null)}
-          >
-            <ScrollView 
-              style={styles.modalScrollView}
-              contentContainerStyle={styles.modalScrollContent}
-              showsVerticalScrollIndicator={true}
-              bounces={false}
+        <Modal
+          visible={!!selectedAppointment}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setSelectedAppointment(null)}
+        >
+          {selectedAppointment && (
+            <TouchableOpacity
+              style={styles.modalOverlay}
+              activeOpacity={1}
+              onPress={() => setSelectedAppointment(null)}
             >
-              <View style={styles.detailsCard}>
-                {(() => {
-                  const compliance = getComplianceStatus(selectedAppointment);
-                  const colors = {
-                    valid: '#1f9c8b',
-                    expired: '#F44336',
-                    unknown: '#9E9E9E'
-                  };
-
-                  return (
-                    <View
-                      style={{
-                        alignSelf: 'flex-start',
-                        paddingHorizontal: 10,
-                        paddingVertical: 4,
-                        borderRadius: 12,
-                        backgroundColor: colors[compliance.status],
-                        marginBottom: 8
-                      }}
-                    >
-                      <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>
-                        {compliance.label}
-                      </Text>
-                    </View>
-                  );
-                })()}
-
-                <Text style={styles.detailsTitle}>Appointment Details</Text>
-
-                <DetailRow label="Date">
-                  {formatDatePretty(selectedAppointment?.date)}
-                </DetailRow>
-
-                <DetailRow label="Time">
-                  {formatTimeHHMM(selectedAppointment?.time)}
-                </DetailRow>
-
-                <DetailRow label="Customer">
-                  {getCustomerLabel(selectedAppointment)}
-                </DetailRow>
-
-                <DetailRow label="Telephone">
-                  {getCustomerPhone(selectedAppointment)}
-                </DetailRow>
-
-                <DetailRow label="Address">
-                  {(() => {
-                    const customerId =
-                      selectedAppointment?.customerId ||
-                      selectedAppointment?.legacyCustomerKey;
-
-                    const customer = customers.find(c => c.id === customerId);
-
-                    return customer?.address || '—';
-                  })()}
-                </DetailRow>
-
-                {(() => {
-                  const lastVisit = getLastCompletedVisit(selectedAppointment);
-                  if (!lastVisit) return null;
-
-                  return (
-                    <DetailRow label="Last Visit">
-                      {formatDatePretty(lastVisit.date)}
-                      {" • "}
-                      {getServiceLabel(lastVisit.serviceType)}
-                    </DetailRow>
-                  );
-                })()}
-
-                <DetailRow label="Service Type">
-                  {getServiceLabel(
-                    selectedAppointment?.serviceType,
-                    selectedAppointment?.specialServiceSubtype,
-                    selectedAppointment?.otherPestName
-                  )}
-                </DetailRow>
-
-                <DetailRow label="Category">
-                  {getAppointmentCategoryLabel(selectedAppointment.appointmentCategory)}
-                </DetailRow>
-
-                <DetailRow label="Technician">
-                  {getTechnicianName(selectedAppointment)}
-                </DetailRow>
-
-                {/* SPECIAL SERVICE */}
-                {selectedAppointment?.serviceType === 'special' && (
-                  <DetailRow label="Special Service">
-                    {getServiceDetails(selectedAppointment)}
-                  </DetailRow>
-                )}
-
-                {/* INSECTICIDE */}
-                {selectedAppointment?.serviceType === 'insecticide' && (
-                  <DetailRow label="Insecticide Details">
-                    {getServiceDetails(selectedAppointment)}
-                  </DetailRow>
-                )}
-
-                {/* DISINFECTION */}
-                {selectedAppointment?.serviceType === 'disinfection' && (
-                  <DetailRow label="Disinfection Details">
-                    {getServiceDetails(selectedAppointment)}
-                  </DetailRow>
-                )}
-
-                <TouchableOpacity
-                  style={styles.closeDetailsButton}
-                  onPress={() => setSelectedAppointment(null)}
+              <TouchableOpacity 
+                activeOpacity={1} 
+                style={styles.modalContentContainer}
+              >
+                <ScrollView 
+                  style={styles.detailsScrollView}
+                  contentContainerStyle={styles.detailsScrollContent}
+                  showsVerticalScrollIndicator={true}
+                  bounces={true}
                 >
-                  <Text style={styles.closeDetailsText}>Close</Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </TouchableOpacity>
-        )}
-      </Modal>
+                  <View style={styles.detailsCard}>
+
+                    {(() => {
+                      const compliance = getComplianceStatus(selectedAppointment);
+
+                      const colors = {
+                        valid: '#1f9c8b',
+                        expired: '#F44336',
+                        unknown: '#9E9E9E'
+                      };
+
+                      return (
+                        <View
+                          style={{
+                            alignSelf: 'flex-start',
+                            paddingHorizontal: 10,
+                            paddingVertical: 4,
+                            borderRadius: 12,
+                            backgroundColor: colors[compliance.status],
+                            marginBottom: 8
+                          }}
+                        >
+                          <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>
+                            {compliance.label}
+                          </Text>
+                        </View>
+                      );
+                    })()}
+
+                    <Text style={styles.detailsTitle}>{i18n.t("admin.calendar.appointmentDetails.title")}</Text>
+
+                    <DetailRow label={i18n.t("admin.calendar.appointmentDetails.date")}>
+                      {formatDatePretty(selectedAppointment?.date || selectedAppointment?.appointment_date)}
+                    </DetailRow>
+
+                    <DetailRow label={i18n.t("admin.calendar.appointmentDetails.time")}>
+                      {formatTimeHHMM(selectedAppointment?.time || selectedAppointment?.appointment_time)}
+                    </DetailRow>
+
+                    <DetailRow label={i18n.t("admin.calendar.appointmentDetails.customer")}>
+                      {getCustomerLabel(selectedAppointment)}
+                    </DetailRow>
+
+                    <DetailRow label={i18n.t("admin.calendar.appointmentDetails.telephone")}>
+                      {getCustomerPhone(selectedAppointment)}
+                    </DetailRow>
+
+                    <DetailRow label={i18n.t("admin.calendar.appointmentDetails.address")}>
+                      {(() => {
+                        const customerId =
+                          selectedAppointment?.customerId ||
+                          selectedAppointment?.legacyCustomerKey;
+
+                        const customer = customers.find(c => c.id === customerId);
+
+                        return customer?.address || '—';
+                      })()}
+                    </DetailRow>
+
+                    {(() => {
+                      const lastVisit = getLastCompletedVisit(selectedAppointment);
+                      if (!lastVisit) return null;
+
+                      return (
+                        <DetailRow label={i18n.t("admin.calendar.appointmentDetails.lastVisit")}>
+                          {formatDatePretty(lastVisit.date || lastVisit.appointment_date)}
+                          {" • "}
+                          {getServiceLabel(
+                            lastVisit.serviceType, 
+                            lastVisit.specialServiceSubtype,
+                            lastVisit.otherPestName
+                          )}
+                        </DetailRow>
+                      );
+                    })()}
+
+                    <DetailRow label={i18n.t("admin.calendar.appointmentDetails.serviceType")}>
+                      {getServiceLabel(
+                        selectedAppointment?.serviceType,
+                        selectedAppointment?.specialServiceSubtype,
+                        selectedAppointment?.otherPestName
+                      )}
+                    </DetailRow>
+
+                    <DetailRow label={i18n.t("admin.calendar.appointmentDetails.category")}>
+                      {getAppointmentCategoryLabel(selectedAppointment.appointmentCategory)}
+                    </DetailRow>
+
+                    <DetailRow label={i18n.t("admin.calendar.appointmentDetails.technician")}>
+                      {getTechnicianName(selectedAppointment)}
+                    </DetailRow>
+
+                    {/* SPECIAL SERVICE */}
+                    {selectedAppointment?.serviceType === 'special' && (
+                      <DetailRow label={i18n.t("admin.calendar.appointmentDetails.specialService")}>
+                        {getServiceDetails(selectedAppointment)}
+                      </DetailRow>
+                    )}
+
+                    {/* INSECTICIDE */}
+                    {selectedAppointment?.serviceType === 'insecticide' && (
+                      <DetailRow label={i18n.t("admin.calendar.appointmentDetails.insecticideDetails")}>
+                        {getServiceDetails(selectedAppointment)}
+                      </DetailRow>
+                    )}
+
+                    {/* DISINFECTION */}
+                    {selectedAppointment?.serviceType === 'disinfection' && (
+                      <DetailRow label={i18n.t("admin.calendar.appointmentDetails.disinfectionDetails")}>
+                        {getServiceDetails(selectedAppointment)}
+                      </DetailRow>
+                    )}
+
+                    <TouchableOpacity
+                      style={styles.closeDetailsButton}
+                      onPress={() => setSelectedAppointment(null)}
+                    >
+                      <Text style={styles.closeDetailsText}>{i18n.t("admin.calendar.appointmentDetails.close")}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </ScrollView>
+              </TouchableOpacity>
+            </TouchableOpacity>
+          )}
+        </Modal>
     </View>
     );
 }
@@ -1282,8 +1301,9 @@ weekNavCenter: {
   },
   
   // CALENDAR WRAPPER (replaces calendarContainer)
-  calendarWrapper: {
-    marginHorizontal: 0,
+   calendarWrapper: {
+    width: "100%",
+    alignSelf: "stretch",
     marginBottom: 16,
     backgroundColor: "#fff",
     borderRadius: 16,
@@ -1305,13 +1325,11 @@ weekNavCenter: {
   },
   
   calendarHorizontalContent: {
-    flexGrow: 1,
-    width: '100%',
+    minWidth: 770, 
   },
-
+  
   calendarGrid: {
-    flex: 1,
-    width: '100%',
+    minWidth: 770, 
   },
   
   dayHeaders: {
@@ -1331,9 +1349,8 @@ weekNavCenter: {
   },
   
   dayColumn: {
-    flex: 1,
-    minWidth: 110,   // keeps readability on small screens
-    padding: 12,
+    width: 130,
+    padding: 8, // Reduced padding for smaller screens
     alignItems: "center",
     justifyContent: "center",
     borderRightWidth: 1,
@@ -1386,14 +1403,13 @@ weekNavCenter: {
   timeRow: {
     flexDirection: "row",
     minHeight: 70,
-    width: "100%",
     borderBottomWidth: 1,
     borderBottomColor: "#f8f9fa",
   },
   
   timeLabel: {
     width: 70,
-    padding: 12,
+    padding: 8, // Reduced padding
     justifyContent: "center",
     alignItems: "center",
     borderRightWidth: 1,
@@ -1409,9 +1425,8 @@ weekNavCenter: {
   },
   
   timeCell: {
-    flex: 1,
-    minWidth: 110,
-    padding: 4,
+    width: 130,
+    padding: 2, // Reduced padding for more space
     backgroundColor: "#fff",
     minHeight: 68,
   },
@@ -1510,12 +1525,10 @@ weekNavCenter: {
     color: "#666",
     fontFamily: 'System',
   },
-  detailsCard: {
+    detailsCard: {
     backgroundColor: '#fff',
-    marginHorizontal: 24,
     borderRadius: 16,
     padding: 20,
-    elevation: 6,
   },
 
   detailsTitle: {
@@ -1541,20 +1554,37 @@ weekNavCenter: {
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
-  },
-  modalScrollView: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
-  modalScrollContent: {
-    flexGrow: 1,
     justifyContent: 'center',
-    paddingVertical: 20,
   },
   appointmentCategory: {
     fontSize: 10,
     color: '#fff',
     opacity: 0.85,
     fontWeight: '600',
+  },
+    modalContentContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  
+  detailsScrollView: {
+    maxHeight: '80%',
+    width: '90%',
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  
+  detailsScrollContent: {
+    flexGrow: 1,
+    padding: 20,
   },
 });

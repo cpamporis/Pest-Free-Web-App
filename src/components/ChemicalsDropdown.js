@@ -11,6 +11,7 @@ import {
   Alert
 } from 'react-native';
 import apiService from '../services/apiService';
+import i18n from "../services/i18n";
 
 export default function ChemicalsDropdown({ 
   selectedChemicals = [], 
@@ -28,18 +29,9 @@ export default function ChemicalsDropdown({
 
   // Debug props
   useEffect(() => {
-    console.log("🧪 DEBUG ChemicalsDropdown Props:", {
-      selectedChemicals,
-      selectedChemicalsLength: selectedChemicals?.length,
-      disabled,
-      editable
-    });
     
     if (selectedChemicals?.length > 0) {
       selectedChemicals.forEach((chem, idx) => {
-        console.log(`🧪 Chemical ${idx}:`, chem);
-        console.log(`🧪 Type:`, typeof chem);
-        console.log(`🧪 Keys:`, chem ? Object.keys(chem) : 'null');
       });
     }
   }, [selectedChemicals]);
@@ -50,11 +42,9 @@ export default function ChemicalsDropdown({
 
   const loadChemicals = async () => {
     try {
-      console.log("🔍 Loading chemicals for dropdown...");
-      
+
       // Use apiService.getChemicals() directly
       const result = await apiService.getChemicals();
-      console.log("📥 Raw result from getChemicals():", result);
       
       // Handle different response formats
       let chemicalArray = [];
@@ -73,9 +63,6 @@ export default function ChemicalsDropdown({
         chemicalArray = result.chemicals;
       }
       
-      console.log("✅ Processed chemical array:", chemicalArray);
-      console.log("✅ Chemical count:", chemicalArray.length);
-      
       // Extract just the names for the dropdown
       const chemicalNames = chemicalArray.map(item => {
         if (typeof item === 'string') {
@@ -86,7 +73,6 @@ export default function ChemicalsDropdown({
         return '';
       }).filter(name => name && name.trim());
       
-      console.log("✅ Chemical names for dropdown:", chemicalNames);
       setChemicals(chemicalNames);
       
     } catch (error) {
@@ -121,7 +107,10 @@ export default function ChemicalsDropdown({
 
   const handleDropdownPress = () => {
     if (disabled) {
-      Alert.alert("Start Service Required", "Please start the service before selecting chemicals.");
+      Alert.alert(
+        i18n.t("components.chemicalsDropdown.error.startServiceRequired") || "Start Service Required",
+        i18n.t("components.chemicalsDropdown.error.startServiceRequired") || "Please start the service before selecting chemicals."
+      );
       return;
     }
     
@@ -136,7 +125,12 @@ export default function ChemicalsDropdown({
 
   const toggleChemical = (chemicalName) => {
     if (disabled || !editable) {
-      Alert.alert("Action Disabled", disabled ? "Start the service first" : "Editing is disabled");
+      Alert.alert(
+        i18n.t("common.error") || "Action Disabled",
+        disabled 
+          ? i18n.t("components.chemicalsDropdown.error.actionDisabled") || "Start the service first"
+          : i18n.t("components.chemicalsDropdown.error.editingDisabled") || "Editing is disabled"
+      );
       return;
     }
     
@@ -212,14 +206,14 @@ export default function ChemicalsDropdown({
 
   // Make sure this function exists in your ChemicalsDropdown component:
   const getChemicalDisplayName = (chemical) => {
-    if (!chemical) return 'Unknown';
+    if (!chemical) return i18n.t("components.chemicalsDropdown.unknown") || 'Unknown';
     
     if (typeof chemical === 'string') {
       return chemical;
     }
     
     // Try multiple possible property names
-    return chemical.name || chemical.chemicalName || chemical.chemical || 'Unknown Chemical';
+    return chemical.name || chemical.chemicalName || chemical.chemical || i18n.t("components.chemicalsDropdown.unknown") || 'Unknown Chemical';
   };
 
   const filteredChemicals = chemicals.filter(chemicalName => {
@@ -233,10 +227,10 @@ export default function ChemicalsDropdown({
       {selectedChemicals.length > 0 && (
         <View style={styles.selectedContainer}>
           <View style={styles.selectedHeader}>
-            <Text style={styles.selectedTitle}>Selected Chemicals:</Text>
+            <Text style={styles.selectedTitle}>{i18n.t("components.chemicalsDropdown.selectedChemicals")}</Text>
             {editable && !disabled && (
               <TouchableOpacity onPress={clearSelected}>
-                <Text style={styles.clearText}>Clear All</Text>
+                <Text style={styles.clearText}>{i18n.t("components.chemicalsDropdown.clearAll")}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -250,7 +244,7 @@ export default function ChemicalsDropdown({
                 <View key={`chemical-${index}`} style={styles.chemicalChip}>
                   <View style={styles.chemicalChipContent}>
                     <Text style={styles.chemicalChipText}>
-                      {chemicalName?.trim() || 'Unnamed Chemical'}
+                      {chemicalName?.trim() || i18n.t("components.chemicalsDropdown.unnamed") || 'Unnamed Chemical'}
                     </Text>
                     {(chemicalConc || chemicalVol) && (
                       <Text style={styles.chemicalChipDetails}>
@@ -285,8 +279,10 @@ export default function ChemicalsDropdown({
           disabled && styles.disabledText
         ]}>
           {selectedChemicals.length > 0 
-            ? `${selectedChemicals.length} chemical${selectedChemicals.length > 1 ? 's' : ''} selected` 
-            : 'Select chemicals used'}
+            ? (selectedChemicals.length === 1
+                ? i18n.t("components.chemicalsDropdown.chemicalSelected_one", { count: selectedChemicals.length })
+                : i18n.t("components.chemicalsDropdown.chemicalSelected_other", { count: selectedChemicals.length }))
+            : i18n.t("components.chemicalsDropdown.selectChemicals")}
         </Text>
         <Text style={[styles.dropdownArrow, disabled && styles.disabledText]}>
           {showDropdown ? '▲' : '▼'}
@@ -295,7 +291,7 @@ export default function ChemicalsDropdown({
 
       {/* Debug info */}
       <Text style={styles.debugText}>
-        Available chemicals: {chemicals.length}
+        {i18n.t("components.chemicalsDropdown.availableChemicals", { count: chemicals.length })}
       </Text>
 
       {/* Dropdown Menu */}
@@ -305,7 +301,7 @@ export default function ChemicalsDropdown({
           <View style={styles.searchContainer}>
             <TextInput
               style={styles.searchInput}
-              placeholder="Search chemicals..."
+              placeholder={i18n.t("components.chemicalsDropdown.search")}
               placeholderTextColor="#999"
               value={searchText}
               onChangeText={setSearchText}
@@ -360,10 +356,12 @@ export default function ChemicalsDropdown({
             ) : (
               <View style={styles.emptyContainer}>
                 <Text style={styles.emptyText}>
-                  {searchText ? 'No chemicals found' : 'No chemicals available'}
+                  {searchText 
+                    ? i18n.t("components.chemicalsDropdown.noChemicalsFound")
+                    : i18n.t("components.chemicalsDropdown.noChemicalsAvailable")}
                 </Text>
                 <TouchableOpacity onPress={loadChemicals}>
-                  <Text style={styles.retryText}>Tap to reload</Text>
+                  <Text style={styles.retryText}>{i18n.t("components.chemicalsDropdown.tapToReload")}</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -374,7 +372,7 @@ export default function ChemicalsDropdown({
             style={styles.doneButton}
             onPress={() => setShowDropdown(false)}
           >
-            <Text style={styles.doneButtonText}>Done</Text>
+            <Text style={styles.doneButtonText}>{i18n.t("components.chemicalsDropdown.done")}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -391,22 +389,24 @@ export default function ChemicalsDropdown({
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Add Details for {selectedChemical}</Text>
+            <Text style={styles.modalTitle}>
+              {i18n.t("components.chemicalsDropdown.addDetails", { chemical: selectedChemical })}
+            </Text>
             
-            <Text style={styles.modalLabel}>Concentration (%)</Text>
+            <Text style={styles.modalLabel}>{i18n.t("components.chemicalsDropdown.concentration")}</Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="e.g., 10"
+              placeholder={i18n.t("components.chemicalsDropdown.concentrationPlaceholder")}
               value={concentration.replace('%', '')}
               onChangeText={setConcentration}
               keyboardType="numeric"
               editable={!disabled}
             />
             
-            <Text style={styles.modalLabel}>Volume (ml)</Text>
+            <Text style={styles.modalLabel}>{i18n.t("components.chemicalsDropdown.volume")}</Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="e.g., 500"
+              placeholder={i18n.t("components.chemicalsDropdown.volumePlaceholder")}
               value={volume.replace('ml', '')}
               onChangeText={setVolume}
               keyboardType="numeric"
@@ -421,7 +421,7 @@ export default function ChemicalsDropdown({
                   setSelectedChemical(null);
                 }}
               >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
+                <Text style={styles.cancelButtonText}>{i18n.t("components.chemicalsDropdown.cancel")}</Text>
               </TouchableOpacity>
               
               <TouchableOpacity
@@ -430,7 +430,7 @@ export default function ChemicalsDropdown({
                 disabled={disabled}
               >
                 <Text style={[styles.saveButtonText, disabled && styles.disabledSaveText]}>
-                  Save
+                  {i18n.t("components.chemicalsDropdown.save")}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -465,64 +465,63 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   selectedList: {
-  flexDirection: 'row',
-  flexWrap: 'wrap',
-  alignItems: 'center', // Add this
-  marginHorizontal: -4, // Compensate for margins
-},
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center', // Add this
+    marginHorizontal: -4, // Compensate for margins
+  },
   // GREEN BLOCK STYLES
-  // GREEN BLOCK STYLES - FIXED VERSION
-chemicalChip: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  backgroundColor: '#1f9c8d',
-  paddingHorizontal: 12,
-  paddingVertical: 10, // Increased for better height
-  borderRadius: 20, // More rounded like web version
-  marginRight: 8,
-  marginBottom: 8,
-  minHeight: 40, // Ensure minimum height
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 1 },
-  shadowOpacity: 0.1,
-  shadowRadius: 2,
-  elevation: 2,
-},
-chemicalChipContent: {
-  flex: 1,
-  marginRight: 8,
-  justifyContent: 'center', // Center content vertically
-  minHeight: 24,
-},
-chemicalChipText: {
-  color: '#fff',
-  fontSize: 14,
-  fontWeight: '600',
-  includeFontPadding: false, // Fix Android text alignment
-  textAlignVertical: 'center',
-},
-chemicalChipDetails: {
-  color: 'rgba(255,255,255,0.85)',
-  fontSize: 11,
-  fontStyle: 'italic',
-  marginTop: 2,
-},
-removeButton: {
-  width: 24,
-  height: 24,
-  borderRadius: 12,
-  backgroundColor: 'rgba(255,255,255,0.3)',
-  justifyContent: 'center',
-  alignItems: 'center',
-},
-removeText: {
-  color: '#fff',
-  fontSize: 16,
-  fontWeight: 'bold',
-  lineHeight: 20, // Fix vertical alignment of X
-  textAlign: 'center',
-  includeFontPadding: false,
-},
+  chemicalChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1f9c8d',
+    paddingHorizontal: 12,
+    paddingVertical: 10, // Increased for better height
+    borderRadius: 20, // More rounded like web version
+    marginRight: 8,
+    marginBottom: 8,
+    minHeight: 40, // Ensure minimum height
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  chemicalChipContent: {
+    flex: 1,
+    marginRight: 8,
+    justifyContent: 'center', // Center content vertically
+    minHeight: 24,
+  },
+  chemicalChipText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    includeFontPadding: false, // Fix Android text alignment
+    textAlignVertical: 'center',
+  },
+  chemicalChipDetails: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 11,
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
+  removeButton: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  removeText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    lineHeight: 20, // Fix vertical alignment of X
+    textAlign: 'center',
+    includeFontPadding: false,
+  },
   dropdownTrigger: {
     flexDirection: 'row',
     justifyContent: 'space-between',

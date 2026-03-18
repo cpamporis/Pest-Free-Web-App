@@ -1,4 +1,4 @@
-// TechnicianHomeScreen.js - Professional Styled Version
+// TechnicianHomeScreen.js - DEsktop
 import React, { useState, useEffect } from "react";
 import {
   View,
@@ -9,6 +9,7 @@ import {
   Alert,
   ActivityIndicator,
   Linking,
+  Platform,
   Image
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -18,6 +19,7 @@ import apiService from "../../services/apiService";
 import pestfreeLogo from "../../../assets/pestfree_logo.png";
 import { useFocusEffect } from '@react-navigation/native';
 import { Modal, TextInput } from 'react-native';
+import i18n from "../../services/i18n";
 
 LocaleConfig.locales['en'] = {
   monthNames: [
@@ -56,7 +58,6 @@ export default function TechnicianHomeScreen({
   const technicianId = technician?.technicianId || technician?.id;
   const todayStr = new Date().toISOString().split("T")[0];
   const onDayPress = (day) => {
-    console.log("📅 Day pressed:", day.dateString); // Should be "2026-01-10"
     setSelectedDate(day.dateString);
   };
   const [loadingAppointmentId, setLoadingAppointmentId] = useState(null);
@@ -70,6 +71,40 @@ export default function TechnicianHomeScreen({
   });
   const [loadingCustomerDetails, setLoadingCustomerDetails] = useState(false);
   const [updatingCustomer, setUpdatingCustomer] = useState(false);
+
+  const showAlert = (title, message, buttons) => {
+    if (Platform.OS === 'web') {
+      // For web/desktop, use window.confirm for simple confirmations
+      if (buttons && buttons.length > 0) {
+        // Check if it's a confirm/cancel dialog (typically 2 buttons)
+        if (buttons.length === 2) {
+          const confirmAction = window.confirm(`${title}\n\n${message}`);
+          if (confirmAction) {
+            // User clicked OK/Confirm - execute the second button's onPress (usually the action)
+            if (buttons[1]?.onPress) {
+              buttons[1].onPress();
+            }
+          } else {
+            // User clicked Cancel - execute the first button's onPress if it exists
+            if (buttons[0]?.onPress) {
+              buttons[0].onPress();
+            }
+          }
+        } else {
+          // Simple alert with just an OK button
+          window.alert(`${title}\n\n${message}`);
+          if (buttons[0]?.onPress) {
+            buttons[0].onPress();
+          }
+        }
+      } else {
+        window.alert(`${title}\n\n${message}`);
+      }
+    } else {
+      // For mobile, use React Native Alert
+      showAlert(title, message, buttons);
+    }
+  };  
 
   const formatTime = (timeStr) => {
     if (!timeStr) return "";
@@ -108,14 +143,6 @@ export default function TechnicianHomeScreen({
   }, [appointments, selectedDate]);
 
   useEffect(() => {
-    console.log("🔍 DEBUG - Selected date:", selectedDate);
-    console.log("🔍 DEBUG - Appointments:", appointments.map(a => ({
-      id: a.id,
-      date: a.date,
-      time: a.time,
-      formattedDate: a.date ? new Date(a.date).toISOString().split('T')[0] : 'no-date'
-    })));
-    
     updateTodayAppointments();
   }, [appointments, selectedDate]);
 
@@ -123,32 +150,21 @@ export default function TechnicianHomeScreen({
   const loadInitialData = async () => {
     setLoading(true);
     try {
-      // Load customers - ADD DEBUGGING
-      console.log("🔍 Loading customers...");
       const customersResult = await apiService.getCustomers();
-      
-      console.log("🔍 Raw customers result:", customersResult);
-      console.log("🔍 Is array?", Array.isArray(customersResult));
-      console.log("🔍 Type of result:", typeof customersResult);
-      
       // Handle different response formats
       let customersArray = [];
       
       if (Array.isArray(customersResult)) {
         customersArray = customersResult;
-        console.log("✅ Using direct array");
       } else if (customersResult && Array.isArray(customersResult.data)) {
         customersArray = customersResult.data;
-        console.log("✅ Using result.data array");
       } else if (customersResult && customersResult.success && Array.isArray(customersResult.customers)) {
         customersArray = customersResult.customers;
-        console.log("✅ Using result.customers array");
       } else {
         console.warn("⚠️ Unexpected customers format, defaulting to empty array");
         customersArray = [];
       }
-      
-      console.log(`✅ Setting ${customersArray.length} customers`);
+    
       setCustomers(customersArray);
 
       // 🔴 CHANGE: Load ALL appointments for this technician
@@ -156,22 +172,14 @@ export default function TechnicianHomeScreen({
         technicianId: technician.id
       });
 
-      // 🔍 DEBUG: Check what fields are in the appointments
-      if (scheduleResult && scheduleResult.length > 0) {
-        console.log("🔍 Appointment fields from backend:", Object.keys(scheduleResult[0]));
-        console.log("🔍 Sample appointment:", {
-          id: scheduleResult[0].id,
-          status: scheduleResult[0].status,
-          visit_id: scheduleResult[0].visit_id,
-          allKeys: Object.keys(scheduleResult[0])
-        });
-      }
-
       setAppointments(scheduleResult);
 
     } catch (error) {
       console.error("❌ Failed to load initial data:", error);
-      Alert.alert("Error", "Failed to load schedule data");
+      showAlert(
+        i18n.t("technician.common.error"), 
+        i18n.t("technician.home.loadingError") || "Failed to load schedule data"
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -236,17 +244,6 @@ export default function TechnicianHomeScreen({
   };
 
   const updateTodayAppointments = () => {
-    console.log("📅 Updating today's appointments:", {
-      selectedDate,
-      appointmentsCount: appointments.length,
-      appointments: appointments.map(a => ({
-        id: a.id,
-        date: a.date,
-        customerId: a.customerId,
-        legacyCustomerKey: a.legacyCustomerKey,
-        time: a.time
-      }))
-    });
 
     const todays = appointments
       .filter((appt) => {
@@ -259,21 +256,11 @@ export default function TechnicianHomeScreen({
         // Compare with selected date (which is already in YYYY-MM-DD format)
         const matches = apptLocalDate === selectedDate;
         
-        console.log(`Appointment ${appt.id}:`, {
-          apptDate: appt.date,
-          apptLocalDate,
-          selectedDate,
-          matches
-        });
-        
         return matches;
       })
       .sort((a, b) =>
         formatTime(a.time).localeCompare(formatTime(b.time))
       );
-
-    console.log("✅ Filtered appointments for today:", todays.length);
-    console.log("📋 Today's appointments:", todays);
     
     setTodayAppointments(todays);
   };
@@ -286,7 +273,10 @@ export default function TechnicianHomeScreen({
 
   const navigateToCustomerLocation = (customer) => {
     if (!customer || !customer.address) {
-      Alert.alert("No Location", "This customer doesn't have a location saved.");
+      showAlert(
+        i18n.t("technician.navigation.errors.noAddress"),
+        i18n.t("technician.navigation.errors.noAddressMessage")
+      );
       return;
     }
 
@@ -308,24 +298,24 @@ export default function TechnicianHomeScreen({
       wazeUrl = `https://waze.com/ul?q=${encodedAddress}&navigate=yes`;
     }
 
-    Alert.alert(
-      "Navigate to Customer",
-      `Navigate to ${customer.customerName} using:`,
+    showAlert(
+      i18n.t("technician.navigation.quickNav.chooseApp"),
+      i18n.t("technician.navigation.quickNav.prompt", { name: customer.customerName }),
       [
         {
-          text: "Google Maps",
+          text: i18n.t("technician.navigation.apps.googleMaps.name"),
           onPress: () => Linking.openURL(googleMapsUrl)
         },
         {
-          text: "Waze",
+          text: i18n.t("technician.navigation.apps.waze.name"),
           onPress: () => Linking.openURL(wazeUrl)
         },
         {
-          text: "Apple Maps",
+          text: i18n.t("technician.navigation.apps.appleMaps.name"),
           onPress: () => Linking.openURL(appleMapsUrl)
         },
         {
-          text: "Cancel",
+          text: i18n.t("common.cancel"),
           style: "cancel"
         }
       ]
@@ -337,16 +327,8 @@ export default function TechnicianHomeScreen({
       setLoadingCustomerDetails(true);
       setEditingCustomer(customer);
       
-      console.log("🔍 Loading customer details for editing:", customer.customerId);
-      
       // Fetch full customer details with maps
       const customerDetails = await apiService.getCustomerWithMaps(customer.customerId);
-      
-      console.log("✅ Customer details loaded:", {
-        customerId: customerDetails?.customerId,
-        customerName: customerDetails?.customerName,
-        mapsCount: customerDetails?.maps?.length || 0
-      });
       
       setEditForm({
         customerName: customerDetails.customerName || customer.customerName || '',
@@ -359,7 +341,10 @@ export default function TechnicianHomeScreen({
       
     } catch (error) {
       console.error("❌ Error loading customer details:", error);
-      Alert.alert("Error", "Failed to load customer details. Please try again.");
+      showAlert(
+        i18n.t("technician.common.error"), 
+        i18n.t("technician.home.loadCustomerError") || "Failed to load customer details. Please try again."
+      );
     } finally {
       setLoadingCustomerDetails(false);
     }
@@ -367,23 +352,24 @@ export default function TechnicianHomeScreen({
 
   const handleSaveCustomerEdit = async () => {
     if (!editingCustomer || !editingCustomer.customerId) {
-      Alert.alert("Error", "No customer selected for editing.");
+      showAlert(
+        i18n.t("technician.common.error"), 
+        i18n.t("technician.home.noCustomerSelected") || "No customer selected for editing."
+      );
       return;
     }
     
     if (!editForm.customerName.trim()) {
-      Alert.alert("Validation Error", "Customer name is required.");
+      showAlert(
+        i18n.t("technician.common.error"), 
+        i18n.t("technician.home.customerNameRequired") || "Customer name is required."
+      );
       return;
     }
     
     try {
       setUpdatingCustomer(true);
-      
-      console.log("💾 Saving customer edits:", {
-        customerId: editingCustomer.customerId,
-        formData: editForm
-      });
-      
+
       // Update customer via API
       const result = await apiService.updateCustomer(editingCustomer.customerId, {
         customerName: editForm.customerName.trim(),
@@ -392,7 +378,10 @@ export default function TechnicianHomeScreen({
       });
       
       if (result?.success) {
-        Alert.alert("Success", "Customer updated successfully!");
+        showAlert(
+          i18n.t("technician.common.success"), 
+          i18n.t("technician.home.customerUpdated") || "Customer updated successfully!"
+        );
         
         // Refresh the customers list
         const updatedCustomers = await apiService.getCustomers();
@@ -410,60 +399,69 @@ export default function TechnicianHomeScreen({
         setEditModalVisible(false);
         setEditingCustomer(null);
       } else {
-        throw new Error(result?.error || "Update failed");
+        throw new Error(result?.error || i18n.t("technician.home.updateFailed") || "Update failed");
       }
       
     } catch (error) {
       console.error("❌ Error updating customer:", error);
-      Alert.alert("Error", error.message || "Failed to update customer. Please try again.");
+      showAlert(
+        i18n.t("technician.common.error"), 
+        error.message || i18n.t("technician.home.updateFailed") || "Failed to update customer. Please try again."
+      );
     } finally {
       setUpdatingCustomer(false);
     }
   };
 
   const handleAppointmentSelect = async (appointment) => {
-  console.log("📋 Appointment details:", {
-    id: appointment.id,
-    status: appointment.status,
-    visit_id: appointment.visit_id
-  });
+    if (appointment.status === "cancelled") {
+      showAlert(
+        i18n.t("technician.home.appointments.status.cancelled"),
+        i18n.t("technician.home.appointments.cancelledMessage") || "This appointment has been cancelled and cannot be accessed."
+      );
+      return;
+    }
 
-  if (appointment.status === "cancelled") {
-    Alert.alert(
-      "Cancelled Appointment",
-      "This appointment has been cancelled and cannot be accessed."
-    );
-    return;
-  }
+    if (appointment.status === "completed") {
+      showAlert(
+        i18n.t("technician.home.appointments.status.completed"),
+        i18n.t("technician.home.appointments.completedMessage") || "This appointment is completed. You can view or edit it.",
+        [
+          {
+            text: i18n.t("technician.home.appointments.viewDetails") || "View Details",
+            onPress: async () => {
+              await proceedToAppointment(appointment, { viewOnly: true });
+            }
+          },
+          {
+            text: i18n.t("technician.home.appointments.editMode") || "Edit Mode",
+            onPress: async () => {
+              await proceedToAppointment(appointment, { viewOnly: false }); // Allow editing
+            }
+          },
+          { text: i18n.t("common.cancel"), style: "cancel" }
+        ]
+      );
+      return;
+    }
 
-  // 🚨 REMOVED THE BLOCKING ALERT - Allow editing of completed appointments
-  // Just proceed directly to the appointment for ALL non-cancelled appointments
-  await proceedToAppointment(appointment, { viewOnly: false });
-};
+    // scheduled / in_progress
+    await proceedToAppointment(appointment, { viewOnly: false });
+  };
 
   const proceedToAppointment = async (appointment, options = {}) => {
   const { viewOnly = false } = options;
     setLoadingAppointmentId(appointment.id);
     try {
-      console.log("📋 Processing appointment:", {
-        appointmentId: appointment.id,
-        customerId: appointment.customerId,
-        legacyCustomerKey: appointment.legacyCustomerKey,
-        hasCustomerObject: !!appointment.customer,
-        visit_id: appointment.visit_id,  // Check this
-        visitId: appointment.visitId     // And this
-      });
 
       let customer;
       
       // 1. First try to use the customer from the appointment (if it has maps)
       if (appointment.customer && appointment.customer.maps) {
-        console.log("✅ Appointment already has customer with maps");
         customer = appointment.customer;
       }
       // 2. If appointment has customerId, fetch the full customer data with maps
       else if (appointment.customerId) {
-        console.log("📥 Fetching customer data with maps for:", appointment.customerId);
         
         // Show loading indicator
         setLoading(true);
@@ -472,11 +470,6 @@ export default function TechnicianHomeScreen({
           const customerData = await apiService.getCustomerWithMaps(appointment.customerId);
           
           if (customerData && customerData.customerId) {
-            console.log("✅ Customer data loaded with maps:", {
-              customerId: customerData.customerId,
-              customerName: customerData.customerName,
-              mapsCount: customerData.maps?.length || 0
-            });
             
             customer = {
               customerId: customerData.customerId,
@@ -486,15 +479,15 @@ export default function TechnicianHomeScreen({
               maps: customerData.maps || [] // CRITICAL: Include maps!
             };
           } else {
-            throw new Error("Invalid customer data returned");
+            throw new Error(i18n.t("technician.home.invalidCustomerData") || "Invalid customer data returned");
           }
         } catch (fetchError) {
           console.error("❌ Error fetching customer data:", fetchError);
           // Fallback to basic customer info
           customer = {
             customerId: appointment.customerId,
-            customerName: appointment.customerName || `Customer ${appointment.customerId}`,
-            address: appointment.customerAddress || "Address not available",
+            customerName: appointment.customerName || `${i18n.t("technician.home.customer")} ${appointment.customerId}`,
+            address: appointment.customerAddress || i18n.t("technician.common.noAddress"),
             email: "",
             maps: []
           };
@@ -504,11 +497,10 @@ export default function TechnicianHomeScreen({
       }
       // 3. If it's a legacy customer (legacyCustomerKey), create minimal customer
       else if (appointment.legacyCustomerKey) {
-        console.log("🔄 Creating legacy customer from key:", appointment.legacyCustomerKey);
         customer = {
           customerId: appointment.legacyCustomerKey,
-          customerName: appointment.customerName || `Legacy Customer ${appointment.legacyCustomerKey}`,
-          address: appointment.customerAddress || "Address not available",
+          customerName: appointment.customerName || `${i18n.t("technician.home.legacyCustomer")} ${appointment.legacyCustomerKey}`,
+          address: appointment.customerAddress || i18n.t("technician.common.noAddress"),
           email: "",
           maps: [] // Legacy customers won't have maps
         };
@@ -518,8 +510,8 @@ export default function TechnicianHomeScreen({
         console.warn("⚠️ No customer reference found in appointment");
         customer = {
           customerId: "unknown",
-          customerName: "Unknown Customer",
-          address: "Address not available",
+          customerName: i18n.t("technician.common.unknown"),
+          address: i18n.t("technician.common.noAddress"),
           email: "",
           maps: []
         };
@@ -549,22 +541,16 @@ export default function TechnicianHomeScreen({
         viewOnly,
         rawAppointment: appointment
       };
-
-      console.log("✅ Passing session with visitId:", {
-        appointmentId: appointment.id,
-        status: appointment.status,
-        visitId: session.visitId,
-        hasVisitId: !!session.visitId,
-        rawVisitIdFromDB: appointment.visit_id,
-        rawVisitIdFromFrontend: appointment.visitId
-      });
       
       // Pass customer and session to parent component
       onSelectCustomer(customer, session, { mode: "work" });
       
     } catch (error) {
       console.error("❌ Error in proceedToAppointment:", error);
-      Alert.alert("Error", "Failed to load appointment data. Please try again.");
+      showAlert(
+        i18n.t("technician.common.error"), 
+        i18n.t("technician.home.appointmentLoadError") || "Failed to load appointment data. Please try again."
+      );
     } finally {
       setLoadingAppointmentId(null);
     }
@@ -585,7 +571,7 @@ export default function TechnicianHomeScreen({
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#1f9c8b" />
-          <Text style={styles.loadingText}>Loading Technician Dashboard...</Text>
+          <Text style={styles.loadingText}>{i18n.t("technician.home.loading")}</Text>
         </View>
       </SafeAreaView>
     );
@@ -603,7 +589,7 @@ export default function TechnicianHomeScreen({
             <Image source={pestfreeLogo} style={styles.logo} resizeMode="contain" />
             <View style={styles.techBadge}>
               <MaterialIcons name="engineering" size={12} color="#fff" />
-              <Text style={styles.techBadgeText}>TECH</Text>
+              <Text style={styles.techBadgeText}>{i18n.t("technician.home.header.badge")}</Text>
             </View>
           </View>
           <TouchableOpacity 
@@ -612,7 +598,7 @@ export default function TechnicianHomeScreen({
             activeOpacity={0.7}
           >
             <MaterialIcons name="logout" size={18} color="#fff" />
-            <Text style={styles.logoutText}>Logout</Text>
+            <Text style={styles.logoutText}>{i18n.t("technician.home.header.logout")}</Text>
           </TouchableOpacity>
         </View>
 
@@ -624,12 +610,12 @@ export default function TechnicianHomeScreen({
             </Text>
           </View>
           <View style={styles.welcomeContent}>
-            <Text style={styles.welcomeText}>Welcome back,</Text>
+            <Text style={styles.welcomeText}>{i18n.t("technician.home.welcome")}</Text>
             <Text style={styles.techName}>
               {technician.firstName} {technician.lastName}
             </Text>
             <Text style={styles.techInfo}>
-              {technician.username} • {todayAppointments.length} appointments today
+              {technician.username} • {todayAppointments.length} {i18n.t("technician.home.appointments.todayCount", { count: todayAppointments.length })}
             </Text>
           </View>
         </View>
@@ -641,7 +627,7 @@ export default function TechnicianHomeScreen({
               <MaterialIcons name="schedule" size={20} color="#1f9c8b" />
             </View>
             <Text style={styles.statNumber}>{todayAppointments.length}</Text>
-            <Text style={styles.statLabel}>Today's Visits</Text>
+            <Text style={styles.statLabel}>{i18n.t("technician.home.stats.todayVisits")}</Text>
           </View>
           
           <View style={styles.statItem}>
@@ -649,7 +635,7 @@ export default function TechnicianHomeScreen({
               <MaterialIcons name="people" size={20} color="#1f9c8b" />
             </View>
             <Text style={styles.statNumber}>{customers.length}</Text>
-            <Text style={styles.statLabel}>Customers</Text>
+            <Text style={styles.statLabel}>{i18n.t("technician.home.stats.customers")}</Text>
           </View>
           
           <View style={styles.statItem}>
@@ -657,7 +643,7 @@ export default function TechnicianHomeScreen({
               <MaterialIcons name="calendar-today" size={20} color="#1f9c8b" />
             </View>
             <Text style={styles.statNumber}>{appointments.length}</Text>
-            <Text style={styles.statLabel}>Total Appointments</Text>
+            <Text style={styles.statLabel}>{i18n.t("technician.home.stats.totalAppointments")}</Text>
           </View>
         </View>
 
@@ -665,7 +651,7 @@ export default function TechnicianHomeScreen({
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <MaterialIcons name="person-search" size={20} color="#2c3e50" />
-            <Text style={styles.sectionTitle}>Customer Selection</Text>
+            <Text style={styles.sectionTitle}>{i18n.t("technician.home.customerSelection.title")}</Text>
           </View>
           
           <TouchableOpacity
@@ -679,7 +665,7 @@ export default function TechnicianHomeScreen({
                 styles.selectorText,
                 selectedCustomer && styles.selectorTextSelected
               ]}>
-                {selectedCustomer ? selectedCustomer.customerName : "Select a customer"}
+                {selectedCustomer ? selectedCustomer.customerName : i18n.t("technician.home.customerSelection.selectorPlaceholder")}
               </Text>
             </View>
             <MaterialIcons 
@@ -734,7 +720,7 @@ export default function TechnicianHomeScreen({
               >
                 <MaterialIcons name="navigation" size={20} color="#fff" />
                 <Text style={styles.navigationButtonText}>
-                  Navigate to {selectedCustomer.customerName}
+                  {i18n.t("technician.home.customerSelection.navigateButton", { name: selectedCustomer.customerName })}
                 </Text>
               </TouchableOpacity>
               
@@ -751,7 +737,7 @@ export default function TechnicianHomeScreen({
                   <>
                     <MaterialIcons name="edit" size={20} color="#1f9c8b" />
                     <Text style={styles.editCustomerButtonText}>
-                      Edit Customer Profile
+                      {i18n.t("technician.home.customerSelection.editButton")}
                     </Text>
                   </>
                 )}
@@ -764,7 +750,7 @@ export default function TechnicianHomeScreen({
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <MaterialIcons name="calendar-today" size={20} color="#2c3e50" />
-            <Text style={styles.sectionTitle}>Schedule Calendar</Text>
+            <Text style={styles.sectionTitle}>{i18n.t("technician.home.calendar.title")}</Text>
           </View>
           
           <View style={styles.calendarContainer}>
@@ -807,17 +793,17 @@ export default function TechnicianHomeScreen({
             <View style={styles.legendContainer}>
               <View style={styles.legendItem}>
                 <View style={[styles.legendDot, { backgroundColor: '#1f9c8b' }]} />
-                <Text style={styles.legendText}>All completed</Text>
+                <Text style={styles.legendText}>{i18n.t("technician.home.calendar.legend.allCompleted")}</Text>
               </View>
               <View style={styles.legendItem}>
                 <View style={[styles.legendDot, { backgroundColor: '#9C6713' }]} />
-                <Text style={styles.legendText}>Pending</Text>
+                <Text style={styles.legendText}>{i18n.t("technician.home.calendar.legend.pending")}</Text>
               </View>
               <View style={styles.legendItem}>
                 <View style={styles.legendToday}>
                   <View style={styles.legendTodayInner} />
                 </View>
-                <Text style={styles.legendText}>Today</Text>
+                <Text style={styles.legendText}>{i18n.t("technician.home.calendar.legend.today")}</Text>
               </View>
             </View>
           </View>
@@ -827,7 +813,7 @@ export default function TechnicianHomeScreen({
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <MaterialIcons name="event-available" size={20} color="#2c3e50" />
-            <Text style={styles.sectionTitle}>Appointments for {formatDate(selectedDate)}</Text>
+            <Text style={styles.sectionTitle}>{i18n.t("technician.home.appointments.title", { date: formatDate(selectedDate) })}</Text>
           </View>
           
           {todayAppointments.length === 0 ? (
@@ -835,16 +821,16 @@ export default function TechnicianHomeScreen({
               <View style={styles.emptyIconContainer}>
                 <MaterialIcons name="event-busy" size={48} color="#ddd" />
               </View>
-              <Text style={styles.emptyTitle}>No Appointments</Text>
+              <Text style={styles.emptyTitle}>{i18n.t("technician.home.appointments.empty.title")}</Text>
               <Text style={styles.emptySubtitle}>
-                No appointments scheduled for this date
+                {i18n.t("technician.home.appointments.empty.subtitle")}
               </Text>
               <TouchableOpacity 
                 style={styles.refreshButtonSmall}
                 onPress={loadInitialData}
               >
                 <MaterialIcons name="refresh" size={16} color="#1f9c8b" />
-                <Text style={styles.refreshButtonSmallText}>Refresh</Text>
+                <Text style={styles.refreshButtonSmallText}>{i18n.t("technician.home.appointments.empty.refresh")}</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -901,7 +887,7 @@ export default function TechnicianHomeScreen({
                         ]}>
                           <MaterialIcons name="cancel" size={12} color="#F44336" />
                           <Text style={[styles.completedText, { color: '#F44336' }]}>
-                            Cancelled
+                            {i18n.t("technician.home.appointments.status.cancelled")}
                           </Text>
                         </View>
                       )}
@@ -910,7 +896,9 @@ export default function TechnicianHomeScreen({
                         <View style={styles.completedBadge}>
                           <MaterialIcons name="check-circle" size={12} color="#1f9c8b" />
                           <Text style={styles.completedText}>
-                            {appointment.visit_id ? "Completed" : "Scheduled"}
+                            {appointment.visit_id 
+                              ? i18n.t("technician.home.appointments.status.completed")
+                              : i18n.t("technician.home.appointments.status.scheduled")}
                           </Text>
                         </View>
                       )}
@@ -919,7 +907,7 @@ export default function TechnicianHomeScreen({
                       {loadingAppointmentId === appointment.id ? (
                         <View style={styles.loadingContent}>
                           <ActivityIndicator size="small" color="#1f9c8b" />
-                          <Text style={styles.loadingText}>Loading customer data...</Text>
+                          <Text style={styles.loadingText}>{i18n.t("technician.home.appointments.status.loading")}</Text>
                         </View>
                       ) : (
                         <>
@@ -929,7 +917,7 @@ export default function TechnicianHomeScreen({
                           ]}>
                             {customer?.customerName || 
                             appointment.customer_name || 
-                            `Customer ${appointment.legacyCustomerKey || appointment.customerId}`}
+                            `${i18n.t("technician.home.customer")} ${appointment.legacyCustomerKey || appointment.customerId}`}
                           </Text>
                           
                           {customer?.address && (
@@ -955,7 +943,10 @@ export default function TechnicianHomeScreen({
                               color="#666" 
                             />
                             <Text style={styles.serviceTypeText}>
-                              {appointment.serviceType || 'Myocide'}
+                              {appointment.serviceType === 'myocide' ? i18n.t("technician.home.appointments.serviceType.myocide") :
+                               appointment.serviceType === 'disinfection' ? i18n.t("technician.home.appointments.serviceType.disinfection") :
+                               appointment.serviceType === 'insecticide' ? i18n.t("technician.home.appointments.serviceType.insecticide") :
+                               i18n.t("technician.home.appointments.serviceType.special")}
                             </Text>
                           </View>
                         )}
@@ -991,18 +982,18 @@ export default function TechnicianHomeScreen({
             activeOpacity={0.7}
           >
             <MaterialIcons name="refresh" size={20} color="#1f9c8b" />
-            <Text style={styles.refreshButtonText}>Refresh Schedule</Text>
+            <Text style={styles.refreshButtonText}>{i18n.t("technician.home.actions.refreshSchedule")}</Text>
           </TouchableOpacity>
         </View>
 
         {/* Footer */}
         <View style={styles.footer}>
-          <Text style={styles.footerText}>Pestify Technician Portal</Text>
+          <Text style={styles.footerText}>{i18n.t("technician.home.footer.system")}</Text>
           <Text style={styles.footerSubtext}>
-              Version 1.0 • Last updated: {new Date().toLocaleDateString()}
+              {i18n.t("technician.home.footer.version", { date: new Date().toLocaleDateString() })}
           </Text>
           <Text style={styles.footerCopyright}>
-              © {new Date().getFullYear()} Pest-Free. All rights reserved.
+              {i18n.t("technician.home.footer.copyright", { year: new Date().getFullYear() })}
           </Text>
         </View>
       </ScrollView>
@@ -1054,11 +1045,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   logo: {
-    width: 360,
-    height: 150,
-    marginRight: 10,
-    marginLeft: -80, 
-    marginBottom: -10,
+    width: 100,
+    height: 40,
   },
   techBadge: {
     flexDirection: "row",

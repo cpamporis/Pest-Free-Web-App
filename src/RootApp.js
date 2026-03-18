@@ -45,17 +45,11 @@ export default function RootApp() {
 
   // Report refresh function
   const refreshReport = () => {
-    console.log("🔄 Refreshing report...");
     setReportRefreshKey(prev => prev + 1);
   };
 
   // Handle report generation
   const handleGenerateReport = (context) => {
-    console.log("📄 Generating report with context:", {
-      visitId: context?.visitId,
-      serviceType: context?.serviceType
-    });
-    
     // Add refresh function to context
     const enhancedContext = {
       ...context,
@@ -65,8 +59,6 @@ export default function RootApp() {
     setReportContext(enhancedContext);
     setShowReport(true);
   };
-
-
 
   // 🧑 CUSTOMER FLOW
   if (loggedCustomer) {
@@ -99,8 +91,11 @@ export default function RootApp() {
       return (
         <ReportScreen
           context={{
-            visitId: selectedVisit.visit_id,
-            serviceType: selectedVisit.service_type,
+            visitId: selectedVisit.visitId,
+            serviceType: selectedVisit.serviceType,
+            customerName: selectedVisit.customerName,
+            technicianName: selectedVisit.technicianName,
+            startTime: selectedVisit.startTime,
             readOnly: true
           }}
           onBack={() => {
@@ -195,11 +190,7 @@ export default function RootApp() {
         technician={loggedTechnician}
         onLogout={handleLogout}
         onSelectCustomer={(customer, session) => {
-          console.log("📱 RootApp received customer selection:", {
-            customerName: customer?.customerName,
-            sessionStatus: session?.status,
-            sessionVisitId: session?.visitId
-          });
+
           setCurrentCustomer(customer);
           setCurrentSession(session || null);
         }}
@@ -213,17 +204,7 @@ export default function RootApp() {
 
   // 6️⃣ SERVICE SCREENS
   if (loggedTechnician && currentCustomer && !showNavigation && !showReport) {
-    const serviceType = currentSession?.serviceType || "myocide";
-    
-    console.log("📱 RootApp routing to service screen:", {
-      serviceType,
-      customer: currentCustomer?.customerName,
-      session: {
-        status: currentSession?.status,
-        visitId: currentSession?.visitId,
-        appointmentId: currentSession?.appointmentId
-      }
-    });
+    const serviceType = currentSession?.serviceType || "myocide";  
     
     // Common props for all service screens
     const commonProps = {
@@ -254,9 +235,5 @@ export default function RootApp() {
     }
   }
 
-  return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-      <Text>Loading…</Text>
-    </View>
-  );
+  return null;
 }

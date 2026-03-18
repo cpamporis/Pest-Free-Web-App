@@ -21,8 +21,7 @@ import pestfreeLogo from "../../../assets/pestfree_logo.png";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import CustomerProfile from "./CustomerProfile";
-import { useWindowDimensions } from "react-native";
-
+import i18n from "../../services/i18n";
 
 /* ===================== EXISTING MODALS ===================== */
 
@@ -59,7 +58,9 @@ function CustomerSelectModal({ title, subtitle, customers, onClose, onSelect }) 
                         {c.customerName}
                       </Text>
                       <View style={styles.selectItemMeta}>
-                        <Text style={styles.selectItemId}>ID: {c.customerId}</Text>
+                        <Text style={styles.selectItemId}>
+                          {i18n.t("admin.customers.selectModal.id", { id: c.customerId })}
+                        </Text>
                         {!!c.address && (
                           <View key="address-meta" style={{ flexDirection: "row", alignItems: "center" }}>
                             <Text style={styles.selectItemDot}>•</Text>
@@ -78,7 +79,7 @@ function CustomerSelectModal({ title, subtitle, customers, onClose, onSelect }) 
                 onPress={onClose}
                 activeOpacity={0.7}
               >
-                <Text style={styles.cancelWideText}>Cancel Selection</Text>
+                <Text style={styles.cancelWideText}>{i18n.t("admin.customers.selectModal.cancelSelection")}</Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
@@ -98,19 +99,6 @@ function AddCustomerModal({ onClose, onSave }) {
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [telephone, setTelephone] = useState("");
-  const { height, width } = useWindowDimensions();
-  const modalHeight = (() => {
-    // Mobile phones
-    if (width < 480) return height * 0.9;
-
-    // Tablets
-    if (width < 1024) return height * 0.8;
-
-    // Desktop / Web
-    return height * 0.67;
-  })();
-
-
 
   // Map upload states
   const [showMapUpload, setShowMapUpload] = useState(false);
@@ -119,85 +107,73 @@ function AddCustomerModal({ onClose, onSave }) {
   const [uploadingMap, setUploadingMap] = useState(false);
 
   const selectImage = async () => {
-  try {
-    if (Platform.OS === 'web') {
-      // Use HTML file input for web
-      return new Promise((resolve) => {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = 'image/*';
-        input.capture = 'environment'; // Use camera if available
-        input.onchange = async (event) => {
-          const file = event.target.files[0];
-          if (file) {
-            // Create a proper file URI for preview
-            const fileUrl = URL.createObjectURL(file);
-            
-            const selectedImage = {
-              uri: fileUrl,
-              type: file.type,
-              fileName: file.name,
-              file: file, // Keep the File object for FormData
-              fileSize: file.size,
-              isWebFile: true
-            };
-            
-            console.log('📸 Selected image (web):', selectedImage);
-            setSelectedImage(selectedImage);
-            resolve();
-          }
-        };
-        input.click();
-      });
-    } else {
-      // For mobile (Android/iOS)
+    try {
       const result = await launchImageLibrary({
         mediaType: 'photo',
         quality: 0.8,
         maxWidth: 1920,
         maxHeight: 1920,
         selectionLimit: 1,
-        includeBase64: false,
       });
       
       if (result.didCancel) {
-        console.log('User cancelled image picker');
+        return;
       } else if (result.errorCode) {
-        Alert.alert('Error', result.errorMessage || 'Failed to pick image');
+        showAlert(i18n.t("common.error"), result.errorMessage || i18n.t("admin.customers.addModal.imagePickerError") || 'Failed to pick image');
       } else if (result.assets && result.assets[0]) {
-        const asset = result.assets[0];
-        
-        const selectedImage = {
-          uri: asset.uri,
-          type: asset.type || 'image/jpeg',
-          fileName: asset.fileName || `image_${Date.now()}.jpg`,
-          fileSize: asset.fileSize,
-          width: asset.width,
-          height: asset.height,
-          isWebFile: false
-        };
-        
-        console.log('📸 Selected image (mobile):', selectedImage);
-        setSelectedImage(selectedImage);
+        setSelectedImage(result.assets[0]);
       }
+    } catch (error) {
+      console.error('Image picker error:', error);
+      showAlert(i18n.t("common.error"), i18n.t("admin.customers.addModal.imagePickerError") || 'Failed to access image library');
     }
-  } catch (error) {
-    console.error('Image picker error:', error);
-    Alert.alert('Error', 'Failed to access image library');
-  }
-};
+  };
+
+  const showAlert = (title, message, buttons) => {
+    if (Platform.OS === 'web') {
+      // For web/desktop, use window.confirm for simple confirmations
+      if (buttons && buttons.length > 0) {
+        // Check if it's a confirm/cancel dialog (typically 2 buttons)
+        if (buttons.length === 2) {
+          const confirmAction = window.confirm(`${title}\n\n${message}`);
+          if (confirmAction) {
+            // User clicked OK/Confirm - execute the second button's onPress (usually the action)
+            if (buttons[1]?.onPress) {
+              buttons[1].onPress();
+            }
+          } else {
+            // User clicked Cancel - execute the first button's onPress if it exists
+            if (buttons[0]?.onPress) {
+              buttons[0].onPress();
+            }
+          }
+        } else {
+          // Simple alert with just an OK button
+          window.alert(`${title}\n\n${message}`);
+          if (buttons[0]?.onPress) {
+            buttons[0].onPress();
+          }
+        }
+      } else {
+        window.alert(`${title}\n\n${message}`);
+      }
+    } else {
+      // For mobile, use React Native Alert
+      showAlert(title, message, buttons);
+    }
+  };
 
   async function handleSave() {
     if (!customerName.trim()) {
-      Alert.alert("Error", "Customer name is required");
+      showAlert(i18n.t("common.error"), i18n.t("admin.customers.addModal.customerNameRequired") || "Customer name is required");
       return;
     }
 
     // 🔐 Validate login fields
     if ((loginEmail && !loginPassword) || (!loginEmail && loginPassword)) {
-      Alert.alert(
-        "Incomplete login details",
-        "Both login email and password are required."
+      showAlert(
+        i18n.t("admin.customers.addModal.incompleteLogin") || "Incomplete login details",
+        i18n.t("admin.customers.addModal.loginFieldsRequired") || "Both login email and password are required."
       );
       return;
     }
@@ -216,7 +192,7 @@ function AddCustomerModal({ onClose, onSave }) {
       const createResult = await apiService.createCustomer(customerData);
 
       if (!createResult?.success) {
-        throw new Error(createResult?.error || "Failed to create customer");
+        throw new Error(createResult?.error || i18n.t("admin.customers.addModal.createFailed") || "Failed to create customer");
       }
 
       const created = createResult.customer;
@@ -231,21 +207,21 @@ function AddCustomerModal({ onClose, onSave }) {
       setCreatedCustomer(created);
       onSave(created);
 
-      Alert.alert(
-        "Customer created",
+      showAlert(
+        i18n.t("admin.customers.addModal.createSuccess") || "Customer created",
         loginEmail
-          ? "Customer and login account created successfully."
-          : "Customer created. No login account was created."
+          ? i18n.t("admin.customers.addModal.createWithLoginSuccess") || "Customer and login account created successfully."
+          : i18n.t("admin.customers.addModal.createWithoutLoginSuccess") || "Customer created. No login account was created."
       );
 
     } catch (e) {
       if (e?.status === 409) {
-        Alert.alert(
-          "Login already exists",
-          "This customer already has a login account."
+        showAlert(
+          i18n.t("admin.customers.addModal.loginExists") || "Login already exists",
+          i18n.t("admin.customers.addModal.loginExistsMessage") || "This customer already has a login account."
         );
       } else {
-        Alert.alert("Error", e?.message || "Failed to create customer.");
+        showAlert(i18n.t("common.error"), e?.message || i18n.t("admin.customers.addModal.createFailed") || "Failed to create customer.");
       }
     } finally {
       setLoading(false);
@@ -253,108 +229,74 @@ function AddCustomerModal({ onClose, onSave }) {
   }
 
   const uploadMapImage = async () => {
-  if (!selectedImage) {
-    Alert.alert('Error', 'Please select an image first');
-    return;
-  }
+    if (!createdCustomer) {
+      showAlert(i18n.t("common.error"), i18n.t("admin.customers.addModal.createFirst") || "Customer must be created first");
+      return;
+    }
 
-  if (!mapName.trim()) {
-    Alert.alert('Error', 'Please enter a map name');
-    return;
-  }
+    if (!selectedImage) {
+      showAlert(i18n.t("common.error"), i18n.t("admin.customers.addModal.selectImage") || "Please select an image");
+      return;
+    }
 
-  setUploadingMap(true);
-  
-  try {
-    const token = await AsyncStorage.getItem("authToken");
-    const customerIdToUse = customer?.customerId || createdCustomer?.customerId;
-    
-    console.log('🔑 Upload details:', {
-      tokenExists: !!token,
-      customerId: customerIdToUse,
-      mapName: mapName.trim(),
-      selectedImageType: selectedImage.isWebFile ? 'web-file' : 'mobile-uri'
-    });
+    if (!mapName.trim()) {
+      showAlert(i18n.t("common.error"), i18n.t("admin.customers.addModal.enterMapName") || "Please enter a map name");
+      return;
+    }
 
-    // Create FormData
+    setUploadingMap(true);
+
     const formData = new FormData();
-    
-    formData.append('customerId', customerIdToUse);
-    formData.append('mapName', mapName.trim());
-    
-    // Handle web vs mobile differently
-    if (selectedImage.isWebFile) {
-      // Web: Use the File object directly
-      formData.append('image', selectedImage.file, selectedImage.fileName);
+
+    if (Platform.OS === "web") {
+      const imageResponse = await fetch(selectedImage.uri);
+      const imageBlob = await imageResponse.blob();
+
+      formData.append(
+        "image",
+        imageBlob,
+        selectedImage.fileName || `map_${Date.now()}.jpg`
+      );
     } else {
-      // Mobile: Use the standard format
-      formData.append('image', {
+      formData.append("image", {
         uri: selectedImage.uri,
-        name: selectedImage.fileName,
-        type: selectedImage.type || 'image/jpeg',
+        type: selectedImage.type || "image/jpeg",
+        name: selectedImage.fileName || `map_${Date.now()}.jpg`,
       });
     }
 
-    console.log('📦 FormData prepared with:', {
-      customerId: customerIdToUse,
-      mapName: mapName.trim(),
-      imageAppended: true
-    });
+    formData.append("customerId", customer.customerId);
+    formData.append("mapName", mapName.trim());
 
-    // Make the request
-    const response = await fetch(`${API_BASE_URL}/upload-image`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        // Don't set Content-Type, let browser handle it
-      },
-      body: formData,
-    });
-
-    console.log('📥 Upload response status:', response.status);
-    
-    const text = await response.text();
-    console.log('📥 Upload response text:', text);
-    
-    let result;
     try {
-      result = text ? JSON.parse(text) : {};
-    } catch (parseError) {
-      console.error('❌ Failed to parse response:', parseError);
-      result = { success: false, error: 'Invalid JSON response' };
-    }
+      const token = await AsyncStorage.getItem("authToken");
 
-    if (response.ok && result.success) {
-      Alert.alert("Success", "Map uploaded successfully!");
-      
-      // Reset form
-      setSelectedImage(null);
-      setMapName("");
-      setShowMapUpload(false);
-      
-      // Refresh maps list for EditCustomerModal
-      if (customer) {
-        setCustomerMaps(prev => [...prev, {
-          mapId: result.map.mapId,
-          name: result.map.name,
-          image: result.map.image,
-          customerId: result.map.customerId
-        }]);
+      const response = await fetch(`${API_BASE_URL}/upload-image`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+
+      const result = await response.json();
+
+      if (result.success) {
+        showAlert(i18n.t("common.success"), i18n.t("admin.customers.addModal.mapUploadSuccess") || "Map uploaded successfully");
+
+        setSelectedImage(null);
+        setMapName("");
+        setShowMapUpload(false);
+      } else {
+        showAlert(i18n.t("common.error"), result.error || i18n.t("admin.customers.addModal.mapUploadFailed") || "Upload failed");
       }
-      
-    } else {
-      const errorMessage = result.error || `Upload failed with status ${response.status}`;
-      console.error('❌ Upload failed:', errorMessage);
-      Alert.alert("Error", errorMessage);
+    } catch (error) {
+      showAlert(i18n.t("common.error"), i18n.t("admin.customers.addModal.mapUploadFailed") || "Failed to upload map");
+    } finally {
+      setUploadingMap(false);
     }
-
-  } catch (error) {
-    console.error('❌ Upload error:', error);
-    Alert.alert("Error", `Failed to upload: ${error.message}`);
-  } finally {
-    setUploadingMap(false);
-  }
-};
+  };
 
   return (
     <Modal animationType="slide" transparent visible>
@@ -365,34 +307,23 @@ function AddCustomerModal({ onClose, onSave }) {
           onPress={onClose}
         >
           <TouchableOpacity activeOpacity={1}>
-            <View
-              style={[
-                styles.modalCard,
-                { height: modalHeight }
-              ]}
-            >
+            <View style={styles.modalCard}>
               <View style={styles.modalHeader}>
                 <View style={styles.modalIconContainer}>
                   <MaterialIcons name="person-add" size={24} color="#fff" />
                 </View>
-                <Text style={styles.modalTitle}>Add New Customer</Text>
+                <Text style={styles.modalTitle}>{i18n.t("admin.customers.addModal.title")}</Text>
                 <Text style={styles.modalSubtitle}>
-                  Enter customer details below
+                  {i18n.t("admin.customers.addModal.subtitle")}
                 </Text>
               </View>
 
-              <ScrollView
-                style={styles.modalForm}
-                contentContainerStyle={{ paddingBottom: 40 }} // ✅ critical
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-              >
-
-                <Text style={styles.sectionTitle}>Basic Information</Text>
+              <ScrollView style={styles.modalForm} showsVerticalScrollIndicator={false}>
+                <Text style={styles.sectionTitle}>{i18n.t("admin.customers.addModal.basicInfo")}</Text>
                 
                 <View style={styles.inputContainer}>
                   <Text style={styles.inputLabel}>
-                    Customer Name <Text style={styles.requiredStar}>*</Text>
+                    {i18n.t("admin.customers.addModal.customerName")} <Text style={styles.requiredStar}>*</Text>
                   </Text>
                   <TextInput
                     style={styles.input}
@@ -405,7 +336,7 @@ function AddCustomerModal({ onClose, onSave }) {
                 </View>
 
                 <View style={styles.inputContainer}>
-                  <Text style={styles.inputLabel}>Address</Text>
+                  <Text style={styles.inputLabel}>{i18n.t("admin.customers.addModal.address")}</Text>
                   <TextInput
                     style={styles.input}
                     placeholder="e.g. 123 Hotel Street, Athens"
@@ -417,7 +348,7 @@ function AddCustomerModal({ onClose, onSave }) {
                 </View>
 
                 <View style={styles.inputContainer}>
-                  <Text style={styles.inputLabel}>Email Address</Text>
+                  <Text style={styles.inputLabel}>{i18n.t("admin.customers.addModal.email")}</Text>
                   <TextInput
                     style={styles.input}
                     placeholder="e.g. info@company.com"
@@ -431,7 +362,7 @@ function AddCustomerModal({ onClose, onSave }) {
                 </View>
 
                 <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Telephone</Text>
+                <Text style={styles.inputLabel}>{i18n.t("admin.customers.addModal.telephone")}</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="+30 69XXXXXXXX"
@@ -443,13 +374,13 @@ function AddCustomerModal({ onClose, onSave }) {
                 />
               </View>
 
-                <Text style={styles.sectionTitle}>Login Account (Optional)</Text>
+                <Text style={styles.sectionTitle}>{i18n.t("admin.customers.addModal.loginAccount")}</Text>
                 <Text style={styles.sectionDescription}>
-                  Create login credentials for customer portal access
+                  {i18n.t("admin.customers.addModal.loginDesc")}
                 </Text>
 
                 <View style={styles.inputContainer}>
-                  <Text style={styles.inputLabel}>Login Email</Text>
+                  <Text style={styles.inputLabel}>{i18n.t("admin.customers.addModal.loginEmail")}</Text>
                   <TextInput
                     style={styles.input}
                     placeholder="customer@domain.com"
@@ -463,10 +394,10 @@ function AddCustomerModal({ onClose, onSave }) {
                 </View>
 
                 <View style={styles.inputContainer}>
-                  <Text style={styles.inputLabel}>Initial Password</Text>
+                  <Text style={styles.inputLabel}>{i18n.t("admin.customers.addModal.initialPassword")}</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="Create secure password"
+                    placeholder={i18n.t("admin.customers.addModal.passwordPlaceholder") || "Create secure password"}
                     placeholderTextColor="#999"
                     secureTextEntry
                     value={loginPassword}
@@ -476,16 +407,16 @@ function AddCustomerModal({ onClose, onSave }) {
                 </View>
 
                 {/* MAP UPLOAD SECTION */}
-                <Text style={styles.sectionTitle}>Maps & Layouts</Text>
+                <Text style={styles.sectionTitle}>{i18n.t("admin.customers.addModal.mapsSection")}</Text>
                 <Text style={styles.sectionDescription}>
-                  Upload location maps after customer is created
+                  {i18n.t("admin.customers.addModal.mapsDesc")}
                 </Text>
 
                 {!createdCustomer && (
                   <View style={styles.infoBox}>
                     <MaterialIcons name="info" size={18} color="#1f9c8b" />
                     <Text style={styles.infoText}>
-                      Save customer first to add maps
+                      {i18n.t("admin.customers.addModal.saveFirst")}
                     </Text>
                   </View>
                 )}
@@ -497,32 +428,28 @@ function AddCustomerModal({ onClose, onSave }) {
                     activeOpacity={0.7}
                   >
                     <MaterialIcons name="add-photo-alternate" size={18} color="#1f9c8b" />
-                    <Text style={styles.secondaryButtonText}>Add Map</Text>
+                    <Text style={styles.secondaryButtonText}>{i18n.t("admin.customers.addModal.addMap")}</Text>
                   </TouchableOpacity>
                 )}
 
                 {createdCustomer && showMapUpload && (
                   <View style={styles.mapUploadContainer}>
                     {selectedImage && (
-  <View style={styles.imagePreviewContainer}>
-    <Image
-      source={{ 
-        uri: selectedImage.uri,
-        cache: 'force-cache' // Optional: cache the image
-      }}
-      style={styles.imagePreview}
-      resizeMode="contain"
-      onError={(error) => console.error('Image preview error:', error.nativeEvent.error)}
-    />
-    <TouchableOpacity
-      style={styles.changeImageBtn}
-      onPress={() => setSelectedImage(null)}
-      activeOpacity={0.7}
-    >
-      <Text style={styles.changeImageText}>Change Image</Text>
-    </TouchableOpacity>
-  </View>
-)}
+                      <View style={styles.imagePreviewContainer}>
+                        <Image
+                          source={{ uri: selectedImage.uri }}
+                          style={styles.imagePreview}
+                          resizeMode="contain"
+                        />
+                        <TouchableOpacity
+                          style={styles.changeImageBtn}
+                          onPress={() => setSelectedImage(null)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.changeImageText}>{i18n.t("admin.customers.addModal.changeImage")}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
 
                     {!selectedImage && (
                       <TouchableOpacity
@@ -532,12 +459,12 @@ function AddCustomerModal({ onClose, onSave }) {
                         activeOpacity={0.7}
                       >
                         <MaterialIcons name="photo-library" size={18} color="#1f9c8b" />
-                        <Text style={styles.secondaryButtonText}>Choose from Gallery</Text>
+                        <Text style={styles.secondaryButtonText}>{i18n.t("admin.customers.addModal.chooseGallery")}</Text>
                       </TouchableOpacity>
                     )}
 
                     <View style={styles.inputContainer}>
-                      <Text style={styles.inputLabel}>Map Name <Text style={styles.requiredStar}>*</Text></Text>
+                      <Text style={styles.inputLabel}>{i18n.t("admin.customers.addModal.mapName")} <Text style={styles.requiredStar}>*</Text></Text>
                       <TextInput
                         style={styles.input}
                         placeholder="e.g. Ground Floor"
@@ -560,7 +487,7 @@ function AddCustomerModal({ onClose, onSave }) {
                         ) : (
                           <>
                             <MaterialIcons name="cloud-upload" size={18} color="#fff" />
-                            <Text style={styles.primaryButtonText}>Upload Map</Text>
+                            <Text style={styles.primaryButtonText}>{i18n.t("admin.customers.addModal.uploadMap")}</Text>
                           </>
                         )}
                       </TouchableOpacity>
@@ -575,7 +502,7 @@ function AddCustomerModal({ onClose, onSave }) {
                         disabled={uploadingMap}
                         activeOpacity={0.7}
                       >
-                        <Text style={styles.cancelButtonText}>Cancel</Text>
+                        <Text style={styles.cancelButtonText}>{i18n.t("common.cancel")}</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -589,7 +516,7 @@ function AddCustomerModal({ onClose, onSave }) {
                   disabled={loading}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                  <Text style={styles.cancelButtonText}>{i18n.t("common.cancel")}</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -603,7 +530,7 @@ function AddCustomerModal({ onClose, onSave }) {
                   ) : (
                     <>
                       <MaterialIcons name="save" size={18} color="#fff" />
-                      <Text style={styles.saveButtonText}>Save Customer</Text>
+                      <Text style={styles.saveButtonText}>{i18n.t("admin.customers.addModal.saveCustomer")}</Text>
                     </>
                   )}
                 </TouchableOpacity>
@@ -613,8 +540,8 @@ function AddCustomerModal({ onClose, onSave }) {
         </TouchableOpacity>
       </SafeAreaView>
     </Modal>
-    );
-  }
+  );
+}
 
 // UPDATED: EditCustomerModal with Image Upload (Gallery only)
 function EditCustomerModal({ customer, onClose, onSave }) {
@@ -623,18 +550,6 @@ function EditCustomerModal({ customer, onClose, onSave }) {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [telephone, setTelephone] = useState("");
-  const { height, width } = useWindowDimensions();
-  const modalHeight = (() => {
-    // Mobile phones
-    if (width < 480) return height * 0.9;
-
-    // Tablets
-    if (width < 1024) return height * 0.8;
-
-    // Desktop / Web
-    return height * 0.67;
-  })();
-
 
   
   // Map upload states
@@ -655,7 +570,7 @@ function EditCustomerModal({ customer, onClose, onSave }) {
         const res = await apiService.getCustomerById(customer.customerId);
 
         if (!res || res.success === false || !res.data) {
-          throw new Error("Invalid customer response");
+          throw new Error(i18n.t("admin.customers.editModal.loadFailed") || "Invalid customer response");
         }
 
         const fresh = res.data;
@@ -669,7 +584,7 @@ function EditCustomerModal({ customer, onClose, onSave }) {
         setCustomerMaps(fresh.maps || []);
       } catch (e) {
         console.error("❌ Failed to load customer:", e);
-        Alert.alert("Error", "Failed to load customer data");
+        showAlert(i18n.t("common.error"), i18n.t("admin.customers.editModal.loadFailed") || "Failed to load customer data");
         onClose();
       } finally {
         if (isMounted) setLoading(false);
@@ -684,189 +599,105 @@ function EditCustomerModal({ customer, onClose, onSave }) {
   }, [customer.customerId]);
 
 
-
-
-const selectImage = async () => {
-  try {
-    if (Platform.OS === 'web') {
-      // Use HTML file input for web
-      return new Promise((resolve) => {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = 'image/*';
-        input.capture = 'environment'; // Use camera if available
-        input.onchange = async (event) => {
-          const file = event.target.files[0];
-          if (file) {
-            // Create a proper file URI for preview
-            const fileUrl = URL.createObjectURL(file);
-            
-            const selectedImage = {
-              uri: fileUrl,
-              type: file.type,
-              fileName: file.name,
-              file: file, // Keep the File object for FormData
-              fileSize: file.size,
-              isWebFile: true
-            };
-            
-            console.log('📸 Selected image (web):', selectedImage);
-            setSelectedImage(selectedImage);
-            resolve();
-          }
-        };
-        input.click();
-      });
-    } else {
-      // For mobile (Android/iOS)
+  const selectImage = async () => {
+    try {
       const result = await launchImageLibrary({
         mediaType: 'photo',
         quality: 0.8,
         maxWidth: 1920,
         maxHeight: 1920,
         selectionLimit: 1,
-        includeBase64: false,
       });
       
       if (result.didCancel) {
-        console.log('User cancelled image picker');
+        return;
       } else if (result.errorCode) {
-        Alert.alert('Error', result.errorMessage || 'Failed to pick image');
+        showAlert(i18n.t("common.error"), result.errorMessage || i18n.t("admin.customers.addModal.imagePickerError") || 'Failed to pick image');
       } else if (result.assets && result.assets[0]) {
-        const asset = result.assets[0];
-        
-        const selectedImage = {
-          uri: asset.uri,
-          type: asset.type || 'image/jpeg',
-          fileName: asset.fileName || `image_${Date.now()}.jpg`,
-          fileSize: asset.fileSize,
-          width: asset.width,
-          height: asset.height,
-          isWebFile: false
-        };
-        
-        console.log('📸 Selected image (mobile):', selectedImage);
-        setSelectedImage(selectedImage);
+        setSelectedImage(result.assets[0]);
       }
+    } catch (error) {
+      console.error('Image picker error:', error);
+      showAlert(i18n.t("common.error"), i18n.t("admin.customers.addModal.imagePickerError") || 'Failed to access image library');
     }
-  } catch (error) {
-    console.error('Image picker error:', error);
-    Alert.alert('Error', 'Failed to access image library');
-  }
-};
+  };
 
   const uploadMapImage = async () => {
-  if (!selectedImage) {
-    Alert.alert('Error', 'Please select an image first');
-    return;
-  }
+    if (!selectedImage) {
+      showAlert(i18n.t("common.error"), i18n.t("admin.customers.addModal.selectImage") || 'Please select an image first');
+      return;
+    }
 
-  if (!mapName.trim()) {
-    Alert.alert('Error', 'Please enter a map name');
-    return;
-  }
+    if (!mapName.trim()) {
+      showAlert(i18n.t("common.error"), i18n.t("admin.customers.addModal.enterMapName") || 'Please enter a map name');
+      return;
+    }
 
-  setUploadingMap(true);
-  
-  try {
-    const token = await AsyncStorage.getItem("authToken");
-    const customerIdToUse = customer?.customerId || createdCustomer?.customerId;
+    setUploadingMap(true);
     
-    console.log('🔑 Upload details:', {
-      tokenExists: !!token,
-      customerId: customerIdToUse,
-      mapName: mapName.trim(),
-      selectedImageType: selectedImage.isWebFile ? 'web-file' : 'mobile-uri'
-    });
-
-    // Create FormData
     const formData = new FormData();
-    
-    formData.append('customerId', customerIdToUse);
-    formData.append('mapName', mapName.trim());
-    
-    // Handle web vs mobile differently
-    if (selectedImage.isWebFile) {
-      // Web: Use the File object directly
-      formData.append('image', selectedImage.file, selectedImage.fileName);
+
+    if (Platform.OS === "web") {
+      const imageResponse = await fetch(selectedImage.uri);
+      const imageBlob = await imageResponse.blob();
+
+      formData.append(
+        "image",
+        imageBlob,
+        selectedImage.fileName || `map_${Date.now()}.jpg`
+      );
     } else {
-      // Mobile: Use the standard format
-      formData.append('image', {
+      formData.append("image", {
         uri: selectedImage.uri,
-        name: selectedImage.fileName,
-        type: selectedImage.type || 'image/jpeg',
+        type: selectedImage.type || "image/jpeg",
+        name: selectedImage.fileName || `map_${Date.now()}.jpg`,
       });
     }
 
-    console.log('📦 FormData prepared with:', {
-      customerId: customerIdToUse,
-      mapName: mapName.trim(),
-      imageAppended: true
-    });
+    formData.append("customerId", customer.customerId);
+    formData.append("mapName", mapName.trim());
 
-    // Make the request
-    const response = await fetch(`${API_BASE_URL}/upload-image`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        // Don't set Content-Type, let browser handle it
-      },
-      body: formData,
-    });
-
-    console.log('📥 Upload response status:', response.status);
-    
-    const text = await response.text();
-    console.log('📥 Upload response text:', text);
-    
-    let result;
     try {
-      result = text ? JSON.parse(text) : {};
-    } catch (parseError) {
-      console.error('❌ Failed to parse response:', parseError);
-      result = { success: false, error: 'Invalid JSON response' };
-    }
+      const token = await AsyncStorage.getItem("authToken");
 
-    if (response.ok && result.success) {
-      Alert.alert("Success", "Map uploaded successfully!");
-      
-      // Reset form
-      setSelectedImage(null);
-      setMapName("");
-      setShowMapUpload(false);
-      
-      // Refresh maps list for EditCustomerModal
-      if (customer) {
-        setCustomerMaps(prev => [...prev, {
-          mapId: result.map.mapId,
-          name: result.map.name,
-          image: result.map.image,
-          customerId: result.map.customerId
-        }]);
+      const response = await fetch(`${API_BASE_URL}/upload-image`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setCustomerMaps(prev => [...prev, result.map]);
+
+        setSelectedImage(null);
+        setMapName("");
+        setShowMapUpload(false);
+
+        showAlert(i18n.t("common.success"), i18n.t("admin.customers.editModal.mapAddSuccess") || "Map added successfully!");
+      } else {
+        showAlert(i18n.t("common.error"), result.error || i18n.t("admin.customers.editModal.mapAddFailed") || "Upload failed");
       }
-      
-    } else {
-      const errorMessage = result.error || `Upload failed with status ${response.status}`;
-      console.error('❌ Upload failed:', errorMessage);
-      Alert.alert("Error", errorMessage);
-    }
 
-  } catch (error) {
-    console.error('❌ Upload error:', error);
-    Alert.alert("Error", `Failed to upload: ${error.message}`);
-  } finally {
-    setUploadingMap(false);
-  }
-};
+    } catch (error) {
+      console.error('Upload error:', error);
+      showAlert(i18n.t("common.error"), i18n.t("admin.customers.editModal.mapAddFailed") || 'Failed to upload image');
+    } finally {
+      setUploadingMap(false);
+    }
+  };
 
   const removeMap = async (map) => {
-    Alert.alert(
-      "Delete Map",
-      `Are you sure you want to delete "${map.name}"?`,
+    showAlert(
+      i18n.t("admin.customers.editModal.deleteMapTitle") || "Delete Map",
+      i18n.t("admin.customers.editModal.deleteMapConfirm", { name: map.name }) || `Are you sure you want to delete "${map.name}"?`,
       [
-        { text: "Cancel", style: "cancel" },
+        { text: i18n.t("common.cancel"), style: "cancel" },
         {
-          text: "Delete",
+          text: i18n.t("common.delete"),
           style: "destructive",
           onPress: async () => {
             try {
@@ -876,16 +707,16 @@ const selectImage = async () => {
               );
 
               if (!result?.success) {
-                throw new Error(result?.error || "Delete failed");
+                throw new Error(result?.error || i18n.t("admin.customers.editModal.deleteMapFailed") || "Delete failed");
               }
 
               setCustomerMaps(prev =>
                 prev.filter(m => m.mapId !== map.mapId)
               );
 
-              Alert.alert("Success", "Map deleted successfully");
+              showAlert(i18n.t("common.success"), i18n.t("admin.customers.editModal.deleteMapSuccess") || "Map deleted successfully");
             } catch (err) {
-              Alert.alert("Error", err.message || "Failed to delete map");
+              showAlert(i18n.t("common.error"), err.message || i18n.t("admin.customers.editModal.deleteMapFailed") || "Failed to delete map");
             }
           }
         }
@@ -895,7 +726,7 @@ const selectImage = async () => {
 
   async function handleSave() {
     if (!customerName.trim()) {
-      Alert.alert("Error", "Customer name is required");
+      showAlert(i18n.t("common.error"), i18n.t("admin.customers.addModal.customerNameRequired") || "Customer name is required");
       return;
     }
 
@@ -912,7 +743,7 @@ const selectImage = async () => {
       await onSave(updateData);
       onClose();
     } catch (e) {
-      Alert.alert("Error", e?.message || "Failed to update customer.");
+      showAlert(i18n.t("common.error"), e?.message || i18n.t("admin.customers.editModal.saveFailed") || "Failed to update customer.");
     } finally {
       setLoading(false);
     }
@@ -927,37 +758,27 @@ const selectImage = async () => {
           onPress={onClose}
         >
           <TouchableOpacity activeOpacity={1}>
-            <View
-              style={[
-                styles.modalCard,
-                { height: modalHeight }
-              ]}
-            >
+            <View style={styles.modalCard}>
               <View style={styles.modalHeader}>
                 <View style={styles.modalIconContainer}>
                   <MaterialIcons name="edit" size={24} color="#fff" />
                 </View>
-                <Text style={styles.modalTitle}>Edit Customer</Text>
+                <Text style={styles.modalTitle}>{i18n.t("admin.customers.editModal.title")}</Text>
                 <Text style={styles.modalSubtitle}>
-                  Customer ID: {customer.customerId}
+                  {i18n.t("admin.customers.editModal.subtitle", { id: customer.customerId })}
                 </Text>
               </View>
 
-              <ScrollView
-                style={styles.modalForm}
-                contentContainerStyle={{ paddingBottom: 40 }} // ✅ REQUIRED
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-              >
-                <Text style={styles.sectionTitle}>Basic Information</Text>
+              <ScrollView style={styles.modalForm} showsVerticalScrollIndicator={false}>
+                <Text style={styles.sectionTitle}>{i18n.t("admin.customers.addModal.basicInfo")}</Text>
                 
                 <View style={styles.inputContainer}>
                   <Text style={styles.inputLabel}>
-                    Customer Name <Text style={styles.requiredStar}>*</Text>
+                    {i18n.t("admin.customers.addModal.customerName")} <Text style={styles.requiredStar}>*</Text>
                   </Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="Customer Name"
+                    placeholder={i18n.t("admin.customers.addModal.customerNamePlaceholder") || "Customer Name"}
                     placeholderTextColor="#999"
                     value={customerName}
                     onChangeText={setCustomerName}
@@ -966,10 +787,10 @@ const selectImage = async () => {
                 </View>
 
                 <View style={styles.inputContainer}>
-                  <Text style={styles.inputLabel}>Address</Text>
+                  <Text style={styles.inputLabel}>{i18n.t("admin.customers.addModal.address")}</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="Address"
+                    placeholder={i18n.t("admin.customers.addModal.addressPlaceholder") || "Address"}
                     placeholderTextColor="#999"
                     value={address}
                     onChangeText={setAddress}
@@ -978,10 +799,10 @@ const selectImage = async () => {
                 </View>
 
                 <View style={styles.inputContainer}>
-                  <Text style={styles.inputLabel}>Email Address</Text>
+                  <Text style={styles.inputLabel}>{i18n.t("admin.customers.addModal.email")}</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="Email"
+                    placeholder={i18n.t("admin.customers.addModal.emailPlaceholder") || "Email"}
                     placeholderTextColor="#999"
                     value={email}
                     autoCapitalize="none"
@@ -992,7 +813,7 @@ const selectImage = async () => {
                 </View>
 
                 <View style={styles.inputContainer}>
-                  <Text style={styles.inputLabel}>Telephone</Text>
+                  <Text style={styles.inputLabel}>{i18n.t("admin.customers.addModal.telephone")}</Text>
                   <TextInput
                     style={styles.input}
                     placeholder="+30 69XXXXXXXX"
@@ -1005,11 +826,15 @@ const selectImage = async () => {
                 </View>
 
                 {/* MAPS SECTION */}
-                <Text style={styles.sectionTitle}>Customer Maps</Text>
+                <Text style={styles.sectionTitle}>{i18n.t("admin.customers.editModal.mapsSection")}</Text>
                 
                 {customerMaps.length > 0 && (
                   <View style={styles.mapsList}>
-                    <Text style={styles.mapsListTitle}>Current Maps ({customerMaps.length})</Text>
+                    <Text style={styles.mapsListTitle}>
+                      {customerMaps.length === 1
+                        ? i18n.t("admin.customers.editModal.currentMaps_one", { count: customerMaps.length })
+                        : i18n.t("admin.customers.editModal.currentMaps_other", { count: customerMaps.length })}
+                    </Text>
                     {customerMaps.map((map) => (
                       <View key={map.mapId} style={styles.mapItem}>
                         <View style={styles.mapItemInfo}>
@@ -1022,7 +847,7 @@ const selectImage = async () => {
                           activeOpacity={0.7}
                         >
                           <MaterialIcons name="delete" size={16} color="#F44336" />
-                          <Text style={styles.removeMapText}>Delete</Text>
+                          <Text style={styles.removeMapText}>{i18n.t("admin.customers.editModal.deleteMap")}</Text>
                         </TouchableOpacity>
                       </View>
                     ))}
@@ -1036,32 +861,28 @@ const selectImage = async () => {
                   activeOpacity={0.7}
                 >
                   <MaterialIcons name="add-photo-alternate" size={18} color="#1f9c8b" />
-                  <Text style={styles.secondaryButtonText}>Add New Map</Text>
+                  <Text style={styles.secondaryButtonText}>{i18n.t("admin.customers.editModal.addNewMap")}</Text>
                 </TouchableOpacity>
                 )}
 
                 {showMapUpload && (
                   <View style={styles.mapUploadContainer}>
                     {selectedImage && (
-  <View style={styles.imagePreviewContainer}>
-    <Image
-      source={{ 
-        uri: selectedImage.uri,
-        cache: 'force-cache' // Optional: cache the image
-      }}
-      style={styles.imagePreview}
-      resizeMode="contain"
-      onError={(error) => console.error('Image preview error:', error.nativeEvent.error)}
-    />
-    <TouchableOpacity
-      style={styles.changeImageBtn}
-      onPress={() => setSelectedImage(null)}
-      activeOpacity={0.7}
-    >
-      <Text style={styles.changeImageText}>Change Image</Text>
-    </TouchableOpacity>
-  </View>
-)}
+                      <View style={styles.imagePreviewContainer}>
+                        <Image 
+                          source={{ uri: selectedImage.uri }}
+                          style={styles.imagePreview}
+                          resizeMode="contain"
+                        />
+                        <TouchableOpacity 
+                          style={styles.changeImageBtn}
+                          onPress={() => setSelectedImage(null)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.changeImageText}>{i18n.t("admin.customers.addModal.changeImage")}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
 
                     {!selectedImage && (
                       <TouchableOpacity 
@@ -1071,12 +892,12 @@ const selectImage = async () => {
                         activeOpacity={0.7}
                       >
                         <MaterialIcons name="photo-library" size={18} color="#1f9c8b" />
-                        <Text style={styles.secondaryButtonText}>Choose from Gallery</Text>
+                        <Text style={styles.secondaryButtonText}>{i18n.t("admin.customers.addModal.chooseGallery")}</Text>
                       </TouchableOpacity>
                     )}
 
                     <View style={styles.inputContainer}>
-                      <Text style={styles.inputLabel}>Map Name <Text style={styles.requiredStar}>*</Text></Text>
+                      <Text style={styles.inputLabel}>{i18n.t("admin.customers.addModal.mapName")} <Text style={styles.requiredStar}>*</Text></Text>
                       <TextInput
                         style={styles.input}
                         placeholder="e.g. Ground Floor, Storage Area, etc."
@@ -1099,7 +920,7 @@ const selectImage = async () => {
                         ) : (
                           <>
                             <MaterialIcons name="cloud-upload" size={18} color="#fff" />
-                            <Text style={styles.primaryButtonText}>Upload Map</Text>
+                            <Text style={styles.primaryButtonText}>{i18n.t("admin.customers.addModal.uploadMap")}</Text>
                           </>
                         )}
                       </TouchableOpacity>
@@ -1114,7 +935,7 @@ const selectImage = async () => {
                         disabled={uploadingMap}
                         activeOpacity={0.7}
                       >
-                        <Text style={styles.cancelButtonText}>Cancel</Text>
+                        <Text style={styles.cancelButtonText}>{i18n.t("common.cancel")}</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -1128,7 +949,7 @@ const selectImage = async () => {
                   disabled={loading}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                  <Text style={styles.cancelButtonText}>{i18n.t("common.cancel")}</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -1142,7 +963,7 @@ const selectImage = async () => {
                   ) : (
                     <>
                       <MaterialIcons name="check-circle" size={18} color="#fff" />
-                      <Text style={styles.saveButtonText}>Save Changes</Text>
+                      <Text style={styles.saveButtonText}>{i18n.t("admin.customers.editModal.saveChanges")}</Text>
                     </>
                   )}
                 </TouchableOpacity>
@@ -1169,13 +990,12 @@ function DeleteCustomerModal({ customerName, onClose, onConfirm }) {
               <View style={styles.confirmIconContainer}>
                 <MaterialIcons name="warning" size={40} color="#1f9c8b" />
               </View>
-              <Text style={styles.confirmTitle}>Remove Customer</Text>
+              <Text style={styles.confirmTitle}>{i18n.t("admin.customers.deleteModal.title")}</Text>
               <Text style={styles.confirmText}>
-                Are you sure you want to remove{" "}
-                <Text style={{ fontWeight: "bold", color: "#1f9c8b" }}>{customerName}</Text>?
+                {i18n.t("admin.customers.deleteModal.message", { name: customerName })}
               </Text>
               <Text style={styles.confirmWarning}>
-                This action removes all associated maps and stations of that customer, but they may be recovered
+                {i18n.t("admin.customers.deleteModal.warning")}
               </Text>
 
               <View style={styles.confirmButtons}>
@@ -1184,7 +1004,7 @@ function DeleteCustomerModal({ customerName, onClose, onConfirm }) {
                   onPress={onClose}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.confirmCancelButtonText}>Cancel</Text>
+                  <Text style={styles.confirmCancelButtonText}>{i18n.t("common.cancel")}</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -1193,55 +1013,7 @@ function DeleteCustomerModal({ customerName, onClose, onConfirm }) {
                   activeOpacity={0.7}
                 >
                   <MaterialIcons name="delete" size={18} color="#fff" />
-                  <Text style={styles.confirmDeleteButtonText}>Remove</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </SafeAreaView>
-    </Modal>
-  );
-}
-function PermanentDeleteConfirmModal({ customer, onClose, onConfirm }) {
-  return (
-    <Modal animationType="fade" transparent visible>
-      <SafeAreaView style={styles.modalSafeArea}>
-        <TouchableOpacity 
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={onClose}
-        >
-          <TouchableOpacity activeOpacity={1}>
-            <View style={styles.confirmCard}>
-              <View style={styles.confirmIconContainer}>
-                <MaterialIcons name="warning" size={40} color="#1f9c8b" />
-              </View>
-              <Text style={[styles.confirmTitle, { color: '#1f9c8b' }]}>Permanent Delete</Text>
-              <Text style={styles.confirmText}>
-                Are you ABSOLUTELY sure you want to PERMANENTLY delete{" "}
-                <Text style={{ fontWeight: "bold", color: "#1f9c8b" }}>{customer?.customerName}</Text>?
-              </Text>
-              <Text style={[styles.confirmWarning, { color: '#1f9c8b' }]}>
-                This action CANNOT be undone! All customer data including appointments, maps, and stations will be permanently deleted.
-              </Text>
-
-              <View style={styles.confirmButtons}>
-                <TouchableOpacity
-                  style={[styles.confirmCancelButton, { borderColor: '#1f9c8b' }]}
-                  onPress={onClose}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.confirmCancelButtonText, { color: '#fff' }]}>Cancel</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.confirmDeleteButton, { backgroundColor: '#1f9c8b' }]}
-                  onPress={onConfirm}
-                  activeOpacity={0.7}
-                >
-                  <MaterialIcons name="delete-forever" size={18} color="#fff" />
-                  <Text style={styles.confirmDeleteButtonText}>Delete Forever</Text>
+                  <Text style={styles.confirmDeleteButtonText}>{i18n.t("admin.customers.deleteModal.remove")}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1270,7 +1042,7 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
   const [showSelectForPermanentDelete, setShowSelectForPermanentDelete] = useState(false);
   const [deletedCustomers, setDeletedCustomers] = useState([]);
   const [showDeletedCustomers, setShowDeletedCustomers] = useState(false);
-  const [showPermanentDeleteConfirm, setShowPermanentDeleteConfirm] = useState(false);
+  const [showCustomerList, setShowCustomerList] = useState(true);
   
 
   useEffect(() => {
@@ -1279,8 +1051,6 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
 
   useEffect(() => {
     if (reportToOpen) {
-      console.log("📄 Opening report from CustomersScreen:", reportToOpen);
-      
       // Close the customer profile modal first
       setShowCustomerProfile(false);
       setSelectedCustomer(null);
@@ -1296,7 +1066,7 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
   }, [reportToOpen, onOpenReport]);
 
   const handleOpenReportFromProfile = (visitData) => {
-    console.log("📄 Passing through report data:", visitData);
+    console.log("📄 Passing through report data:");
     // Let CustomerProfile handle everything
   };
 
@@ -1305,7 +1075,7 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
     try {
       const customersRes = await apiService.getCustomers();
       if (!Array.isArray(customersRes)) {
-        throw new Error("Invalid customers response");
+        throw new Error(i18n.t("admin.customers.loadingError") || "Invalid customers response");
       }
 
       const statsRes = await apiService.getCustomerStats();
@@ -1321,15 +1091,12 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
         };
       });
 
-      console.log("🔍 CustomersScreen - onOpenReport prop type:", typeof onOpenReport);
-      console.log("🔍 CustomersScreen - onOpenReport prop available:", !!onOpenReport);
-
       setCustomers(mergedCustomers);
       setCustomerStats(stats);
       await loadDeletedCustomers();
 
     } catch (e) {
-      Alert.alert("Error", e?.message || "Failed to load customers");
+      showAlert(i18n.t("common.error"), e?.message || i18n.t("admin.customers.loadingError") || "Failed to load customers");
     } finally {
       setLoading(false);
     }
@@ -1337,19 +1104,17 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
 
   const loadDeletedCustomers = async () => {
     try {
-      console.log("📋 Loading deleted customers...");
       const result = await apiService.getDeletedCustomers();
       
       if (result?.success && Array.isArray(result.data)) {
         setDeletedCustomers(result.data);
-        console.log(`✅ Loaded ${result.data.length} deleted customers`);
       } else {
         console.warn("⚠️ No deleted customers found");
         setDeletedCustomers([]);
       }
     } catch (e) {
       console.error("❌ Failed to load deleted customers:", e);
-      Alert.alert("Error", "Failed to load deleted customers");
+      showAlert(i18n.t("common.error"), i18n.t("admin.customers.loadDeletedError") || "Failed to load deleted customers");
       setDeletedCustomers([]);
     }
   };
@@ -1359,22 +1124,18 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
   }
 
   async function handleEditCustomer(data) {
-    try {
-      console.log('📝 Updating customer via API:', data.customerId);
-      
+    try {      
       // Call the API to update the customer
       const result = await apiService.updateCustomer(data.customerId, data);
-      
-      console.log('API update response:', result);
       
       if (!result?.success) {
         // Check if result has success property
         if (result && result.success === false) {
-          throw new Error(result.error || "Failed to update customer");
+          throw new Error(result.error || i18n.t("admin.customers.editModal.saveFailed") || "Failed to update customer");
         }
         // If result doesn't have success property but has customer data, it's OK
         if (!result.customer) {
-          throw new Error("Invalid response from server");
+          throw new Error(i18n.t("admin.customers.editModal.invalidResponse") || "Invalid response from server");
         }
       }
       
@@ -1391,74 +1152,78 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
   async function handleSoftDeleteCustomer() {
     if (!selectedCustomer) return;
     
-    console.log('Soft deleting customer:', selectedCustomer.customerId);
-    
     try {
       const result = await apiService.softDeleteCustomer(selectedCustomer.customerId);
       
-      console.log('Soft delete API result:', result);
-      
       if (result && result.success) {
-        Alert.alert("Success", "Customer moved to deleted list");
+        showAlert(i18n.t("common.success"), i18n.t("admin.customers.deleteModal.moveSuccess") || "Customer moved to deleted list");
         setShowDeleteConfirm(false);
         setSelectedCustomer(null);
         
         // Refresh both active and deleted lists
         await loadCustomers();
       } else {
-        Alert.alert("Error", result?.error || "Failed to delete customer");
+        showAlert(i18n.t("common.error"), result?.error || i18n.t("admin.customers.deleteModal.deleteFailed") || "Failed to delete customer");
       }
     } catch (error) {
       console.error('Soft delete customer error:', error);
-      Alert.alert("Error", error.message || "Failed to delete customer");
+      showAlert(i18n.t("common.error"), error.message || i18n.t("admin.customers.deleteModal.deleteFailed") || "Failed to delete customer");
     }
   }
 
   async function handleRestoreCustomer(customer) {
-    console.log('Restoring customer:', customer.customerId);
     
     try {
       const result = await apiService.restoreCustomer(customer.customerId);
       
       if (result && result.success) {
-        Alert.alert("Success", "Customer restored successfully");
+        showAlert(i18n.t("common.success"), i18n.t("admin.customers.restoreSuccess") || "Customer restored successfully");
         
         // Refresh both active and deleted lists
         await loadCustomers();
         setShowSelectForRestore(false);
       } else {
-        Alert.alert("Error", result?.error || "Failed to restore customer");
+        showAlert(i18n.t("common.error"), result?.error || i18n.t("admin.customers.restoreFailed") || "Failed to restore customer");
       }
     } catch (error) {
       console.error('Restore customer error:', error);
-      Alert.alert("Error", error.message || "Failed to restore customer");
+      showAlert(i18n.t("common.error"), error.message || i18n.t("admin.customers.restoreFailed") || "Failed to restore customer");
     }
   }
 
-  async function handlePermanentDeleteCustomer(customer) {
-    console.log('Permanently deleting customer:', customer?.customerId);
+  async function handlePermanentDeleteCustomer() {
+    if (!selectedCustomer) return;
     
-    if (!customer) return;
-    
-    try {
-      const result = await apiService.permanentDeleteCustomer(customer.customerId);
-      
-      if (result && result.success) {
-        Alert.alert("Success", "Customer permanently deleted");
-        setShowPermanentDeleteConfirm(false);
-        setSelectedCustomer(null);
-        
-        // Refresh deleted customers list
-        await loadDeletedCustomers();
-        // Also refresh active customers list
-        await loadCustomers();
-      } else {
-        Alert.alert("Error", result?.error || "Failed to permanently delete customer");
-      }
-    } catch (error) {
-      console.error('Permanent delete customer error:', error);
-      Alert.alert("Error", error.message || "Failed to permanently delete customer");
-    }
+    showAlert(
+      i18n.t("admin.customers.permanentDeleteModal.title") || "Permanent Delete",
+      i18n.t("admin.customers.permanentDeleteModal.message", { name: selectedCustomer.customerName }),
+      [
+        { text: i18n.t("common.cancel"), style: "cancel" },
+        {
+          text: i18n.t("admin.customers.permanentDeleteModal.deleteForever") || "Permanently Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const result = await apiService.permanentDeleteCustomer(selectedCustomer.customerId);
+              
+              if (result && result.success) {
+                showAlert(i18n.t("common.success"), i18n.t("admin.customers.permanentDeleteModal.success") || "Customer permanently deleted");
+                setShowSelectForPermanentDelete(false);
+                setSelectedCustomer(null);
+                
+                // Refresh deleted customers list
+                await loadDeletedCustomers();
+              } else {
+                showAlert(i18n.t("common.error"), result?.error || i18n.t("admin.customers.permanentDeleteModal.failed") || "Failed to permanently delete customer");
+              }
+            } catch (error) {
+              console.error('Permanent delete customer error:', error);
+              showAlert(i18n.t("common.error"), error.message || i18n.t("admin.customers.permanentDeleteModal.failed") || "Failed to permanently delete customer");
+            }
+          }
+        }
+      ]
+    );
   }
 
   // Calculate stats
@@ -1477,7 +1242,7 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#1f9c8b" />
-          <Text style={styles.loadingText}>Loading Customers...</Text>
+          <Text style={styles.loadingText}>{i18n.t("admin.customers.loading")}</Text>
         </View>
       </SafeAreaView>
     );
@@ -1498,7 +1263,7 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
               <Image source={pestfreeLogo} style={styles.logo} resizeMode="contain" />
               <View style={styles.adminBadge}>
                 <MaterialIcons name="people" size={14} color="#fff" />
-                <Text style={styles.adminBadgeText}>CUSTOMERS</Text>
+                <Text style={styles.adminBadgeText}>{i18n.t("admin.customers.header.badge")}</Text>
               </View>
             </View>
             <TouchableOpacity 
@@ -1511,10 +1276,10 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
           </View>
 
           <View style={styles.headerContent}>
-            <Text style={styles.welcomeText}>Customer Management</Text>
-            <Text style={styles.title}>Manage Customer Accounts</Text>
+            <Text style={styles.welcomeText}>{i18n.t("admin.customers.header.welcome")}</Text>
+            <Text style={styles.title}>{i18n.t("admin.customers.header.title")}</Text>
             <Text style={styles.subtitle}>
-              Create, edit, and manage customer profiles and locations
+              {i18n.t("admin.customers.header.subtitle")}
             </Text>
           </View>
         </View>
@@ -1526,7 +1291,7 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
               <FontAwesome5 name="users" size={18} color="#1f9c8b" />
             </View>
             <Text style={styles.statNumber}>{customers.length}</Text>
-            <Text style={styles.statLabel}>Total Customers</Text>
+            <Text style={styles.statLabel}>{i18n.t("admin.customers.stats.totalCustomers")}</Text>
           </View>
 
           <View style={styles.statDivider} />
@@ -1536,7 +1301,7 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
               <MaterialIcons name="map" size={18} color="#1f9c8b" />
             </View>
             <Text style={styles.statNumber}>{totalMaps}</Text>
-            <Text style={styles.statLabel}>Location Maps</Text>
+            <Text style={styles.statLabel}>{i18n.t("admin.customers.stats.locationMaps")}</Text>
           </View>
 
           <View style={styles.statDivider} />
@@ -1546,7 +1311,7 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
               <MaterialIcons name="location-pin" size={18} color="#1f9c8b" />
             </View>
             <Text style={styles.statNumber}>{totalStations}</Text>
-            <Text style={styles.statLabel}>Total Stations</Text>
+            <Text style={styles.statLabel}>{i18n.t("admin.customers.stats.totalStations")}</Text>
           </View>
         </View>
 
@@ -1554,7 +1319,7 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
         <View style={styles.sectionHeader}>
           <View style={styles.sectionTitleContainer}>
             <MaterialIcons name="tune" size={20} color="#2c3e50" />
-            <Text style={styles.sectionTitle}>Customer Actions</Text>
+            <Text style={styles.sectionTitle}>{i18n.t("admin.customers.actions.title")}</Text>
           </View>
           <TouchableOpacity
             style={styles.refreshButton}
@@ -1562,7 +1327,7 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
             activeOpacity={0.7}
           >
             <MaterialIcons name="refresh" size={18} color="#1f9c8b" />
-            <Text style={styles.refreshButtonText}>Refresh</Text>
+            <Text style={styles.refreshButtonText}>{i18n.t("common.refresh")}</Text>
           </TouchableOpacity>
         </View>
 
@@ -1573,39 +1338,39 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
             activeOpacity={0.7}
           >
             <MaterialIcons name="person-add" size={28} color="#fff" />
-            <Text style={styles.actionCardTitle}>Add Customer</Text>
+            <Text style={styles.actionCardTitle}>{i18n.t("admin.customers.actions.add")}</Text>
             <Text style={styles.actionCardDescription}>
-              Create new customer profile
+              {i18n.t("admin.customers.actions.addDesc")}
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.actionCard, { backgroundColor: "#1f9c8b" }]}
             onPress={() => {
-              if (customers.length === 0) return Alert.alert("No customers", "There are no customers to edit.");
+              if (customers.length === 0) return showAlert(i18n.t("admin.customers.actions.noCustomers"), i18n.t("admin.customers.actions.noCustomersToEdit"));
               setShowSelectForEdit(true);
             }}
             activeOpacity={0.7}
           >
             <MaterialIcons name="edit" size={28} color="#fff" />
-            <Text style={styles.actionCardTitle}>Edit Customer</Text>
+            <Text style={styles.actionCardTitle}>{i18n.t("admin.customers.actions.edit")}</Text>
             <Text style={styles.actionCardDescription}>
-              Modify existing customer
+              {i18n.t("admin.customers.actions.editDesc")}
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.actionCard, { backgroundColor: "#1f9c8b" }]}
             onPress={() => {
-              if (customers.length === 0) return Alert.alert("No customers", "There are no customers to delete.");
+              if (customers.length === 0) return showAlert(i18n.t("admin.customers.actions.noCustomers"), i18n.t("admin.customers.actions.noCustomersToDelete"));
               setShowSelectForDelete(true);
             }}
             activeOpacity={0.7}
           >
             <MaterialIcons name="delete" size={28} color="#fff" />
-            <Text style={styles.actionCardTitle}>Remove Customer</Text>
+            <Text style={styles.actionCardTitle}>{i18n.t("admin.customers.actions.remove")}</Text>
             <Text style={styles.actionCardDescription}>
-              Remove customer permanently
+              {i18n.t("admin.customers.actions.removeDesc")}
             </Text>
           </TouchableOpacity>
 
@@ -1613,7 +1378,7 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
             style={[styles.actionCard, { backgroundColor: "#1f9c8b" }]}
             onPress={() => {
               if (deletedCustomers.length === 0) {
-                Alert.alert("No deleted customers", "There are no deleted customers to restore.");
+                showAlert(i18n.t("admin.customers.actions.noDeletedCustomers"), i18n.t("admin.customers.actions.noDeletedToRestore"));
                 return;
               }
               setShowSelectForRestore(true);
@@ -1621,9 +1386,9 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
             activeOpacity={0.7}
           >
             <MaterialIcons name="restore" size={28} color="#fff" />
-            <Text style={styles.actionCardTitle}>Restore Customer</Text>
+            <Text style={styles.actionCardTitle}>{i18n.t("admin.customers.actions.restore")}</Text>
             <Text style={styles.actionCardDescription}>
-              Restore from deleted list
+              {i18n.t("admin.customers.actions.restoreDesc")}
             </Text>
           </TouchableOpacity>
 
@@ -1631,7 +1396,7 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
             style={[styles.actionCard, { backgroundColor: "#1f9c8b" }]}
             onPress={() => {
               if (deletedCustomers.length === 0) {
-                Alert.alert("No deleted customers", "There are no deleted customers to permanently delete.");
+                showAlert(i18n.t("admin.customers.actions.noDeletedCustomers"), i18n.t("admin.customers.actions.noDeletedToPermanentDelete"));
                 return;
               }
               setShowSelectForPermanentDelete(true);
@@ -1639,21 +1404,33 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
             activeOpacity={0.7}
           >
             <MaterialIcons name="delete-forever" size={28} color="#fff" />
-            <Text style={styles.actionCardTitle}>Permanent Delete</Text>
+            <Text style={styles.actionCardTitle}>{i18n.t("admin.customers.actions.permanentDelete")}</Text>
             <Text style={styles.actionCardDescription}>
-              Remove permanently
+              {i18n.t("admin.customers.actions.permanentDeleteDesc")}
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* CUSTOMER LIST */}
+        {/* CUSTOMER LIST DROPDOWN */}
         <View style={styles.sectionHeader}>
-          <View style={styles.sectionTitleContainer}>
+          <TouchableOpacity 
+            style={styles.sectionTitleContainer}
+            onPress={() => setShowCustomerList(!showCustomerList)}
+            activeOpacity={0.7}
+          >
             <MaterialIcons name="list-alt" size={20} color="#2c3e50" />
-            <Text style={styles.sectionTitle}>Customer Directory</Text>
-          </View>
+            <Text style={styles.sectionTitle}>{i18n.t("admin.customers.directory.title")}</Text>
+            <MaterialIcons 
+              name={showCustomerList ? "keyboard-arrow-up" : "keyboard-arrow-down"} 
+              size={24} 
+              color="#2c3e50" 
+              style={styles.dropdownIcon}
+            />
+          </TouchableOpacity>
           <Text style={styles.countBadge}>
-            {customers.length} customer{customers.length !== 1 ? 's' : ''}
+            {customers.length === 1
+              ? i18n.t("admin.customers.directory.count_one", { count: customers.length })
+              : i18n.t("admin.customers.directory.count_other", { count: customers.length })}
           </Text>
         </View>
 
@@ -1662,9 +1439,9 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
             <View style={styles.emptyIconContainer}>
               <MaterialIcons name="people-outline" size={60} color="#ddd" />
             </View>
-            <Text style={styles.emptyStateTitle}>No Customers Found</Text>
+            <Text style={styles.emptyStateTitle}>{i18n.t("admin.customers.directory.emptyTitle")}</Text>
             <Text style={styles.emptyStateText}>
-              Start by adding your first customer to the system
+              {i18n.t("admin.customers.directory.emptyText")}
             </Text>
             <TouchableOpacity
               style={styles.emptyStateButton}
@@ -1672,10 +1449,10 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
               activeOpacity={0.7}
             >
               <MaterialIcons name="person-add" size={18} color="#fff" />
-              <Text style={styles.emptyStateButtonText}>Add First Customer</Text>
+              <Text style={styles.emptyStateButtonText}>{i18n.t("admin.customers.directory.addFirst")}</Text>
             </TouchableOpacity>
           </View>
-        ) : (
+        ) : showCustomerList ? (
           <View style={styles.listContainer}>
             {customers.map((c) => (
               <TouchableOpacity
@@ -1696,7 +1473,9 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
                     <View style={styles.customerMeta}>
                       <View style={styles.customerMetaItem}>
                         <MaterialIcons name="fingerprint" size={12} color="#666" />
-                        <Text style={styles.customerMetaText}>ID: {c.customerId}</Text>
+                        <Text style={styles.customerMetaText}>
+                          {i18n.t("admin.customers.customerCard.id", { id: c.customerId })}
+                        </Text>
                       </View>
                       {c.address && (
                         <View style={styles.customerMetaItem}>
@@ -1727,14 +1506,14 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
               </TouchableOpacity>
             ))}
           </View>
-        )}
+        ) : null}
 
         {/* ===== DELETED CUSTOMERS SECTION ===== */}
         <View style={styles.sectionHeader}>
           <View style={styles.sectionTitleContainer}>
             <MaterialIcons name="delete-outline" size={20} color="#95a5a6" />
             <Text style={[styles.sectionTitle, { color: '#95a5a6' }]}>
-              Deleted Customers
+              {i18n.t("admin.customers.deletedSection.title")}
             </Text>
           </View>
           <TouchableOpacity
@@ -1743,7 +1522,7 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
             activeOpacity={0.7}
           >
             <Text style={styles.toggleButtonText}>
-              {showDeletedCustomers ? 'Hide' : 'Show'} ({deletedCustomers.length})
+              {showDeletedCustomers ? i18n.t("admin.customers.deletedSection.hide") : i18n.t("admin.customers.deletedSection.show")} ({deletedCustomers.length})
             </Text>
             <MaterialIcons 
               name={showDeletedCustomers ? "expand-less" : "expand-more"} 
@@ -1758,7 +1537,7 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
             {deletedCustomers.length === 0 ? (
               <View style={styles.emptyDeletedState}>
                 <MaterialIcons name="delete-sweep" size={40} color="#ddd" />
-                <Text style={styles.emptyDeletedText}>No deleted customers</Text>
+                <Text style={styles.emptyDeletedText}>{i18n.t("admin.customers.deletedSection.noDeleted")}</Text>
               </View>
             ) : (
               <View style={styles.deletedListContainer}>
@@ -1771,9 +1550,11 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
                       <View style={styles.deletedCustomerInfo}>
                         <Text style={styles.deletedCustomerName}>{c.customerName}</Text>
                         <View style={styles.deletedCustomerMeta}>
-                          <Text style={styles.deletedCustomerId}>ID: {c.customerId}</Text>
+                          <Text style={styles.deletedCustomerId}>
+                            {i18n.t("admin.customers.customerCard.id", { id: c.customerId })}
+                          </Text>
                           <Text style={styles.deletedDate}>
-                            Deleted: {new Date(c.deletedAt).toLocaleDateString()}
+                            {i18n.t("admin.customers.deletedSection.deletedDate", { date: new Date(c.deletedAt).toLocaleDateString() })}
                           </Text>
                         </View>
                       </View>
@@ -1786,19 +1567,19 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
                         activeOpacity={0.7}
                       >
                         <MaterialIcons name="restore" size={16} color="#1f9c8b" />
-                        <Text style={styles.restoreButtonText}>Restore</Text>
+                        <Text style={styles.restoreButtonText}>{i18n.t("admin.customers.deletedSection.restore")}</Text>
                       </TouchableOpacity>
                       
                       <TouchableOpacity
                         style={styles.permanentDeleteButton}
                         onPress={() => {
                           setSelectedCustomer(c);
-                          setShowSelectForPermanentDelete(true); // Just open the selection modal
+                          setShowSelectForPermanentDelete(true);
                         }}
                         activeOpacity={0.7}
                       >
                         <MaterialIcons name="delete-forever" size={16} color="#e74c3c" />
-                        <Text style={styles.permanentDeleteButtonText}>Delete Forever</Text>
+                        <Text style={styles.permanentDeleteButtonText}>{i18n.t("admin.customers.deletedSection.deleteForever")}</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -1810,12 +1591,12 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
 
         {/* FOOTER */}
         <View style={styles.footer}>
-          <Text style={styles.footerText}>Customer Management System</Text>
+          <Text style={styles.footerText}>{i18n.t("admin.customers.footer.system")}</Text>
           <Text style={styles.footerSubtext}>
-             Version 1.0 • Last updated: {new Date().toLocaleDateString()}
+             {i18n.t("admin.customers.footer.version", { date: new Date().toLocaleDateString() })}
           </Text>
           <Text style={styles.footerCopyright}>
-             © {new Date().getFullYear()} Pest-Free. All rights reserved. 
+             {i18n.t("admin.customers.footer.copyright", { year: new Date().getFullYear() })}
           </Text>
         </View>
       </ScrollView>
@@ -1827,10 +1608,10 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
           onSave={async (data) => {
             try {
               await handleAddCustomer(data);
-              Alert.alert("Success", "Customer created successfully!");
+              showAlert(i18n.t("common.success"), i18n.t("admin.customers.addModal.createSuccess"));
               setShowAdd(false);
             } catch (e) {
-              Alert.alert("Error", e?.message || "Failed to create customer");
+              showAlert(i18n.t("common.error"), e?.message || i18n.t("admin.customers.addModal.createFailed"));
             }
           }}
         />
@@ -1838,8 +1619,8 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
 
       {showSelectForEdit && (
         <CustomerSelectModal
-          title="Select Customer to Edit"
-          subtitle="Choose a customer from the list"
+          title={i18n.t("admin.customers.selectModal.select", { action: i18n.t("common.edit").toLowerCase() })}
+          subtitle={i18n.t("admin.customers.selectModal.choose")}
           customers={customers}
           onClose={() => setShowSelectForEdit(false)}
           onSelect={(c) => {
@@ -1860,11 +1641,11 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
           onSave={async (data) => {
             try {
               await handleEditCustomer(data);
-              Alert.alert("Success", "Customer updated successfully!");
+              showAlert(i18n.t("common.success"), i18n.t("admin.customers.editModal.saveSuccess") || "Customer updated successfully!");
               setShowEdit(false);
               setSelectedCustomer(null);
             } catch (e) {
-              Alert.alert("Error", e?.message || "Failed to update customer");
+              showAlert(i18n.t("common.error"), e?.message || i18n.t("admin.customers.editModal.saveFailed"));
             }
           }}
         />
@@ -1883,8 +1664,8 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
 
       {showSelectForDelete && (
         <CustomerSelectModal
-          title="Select Customer to Delete"
-          subtitle="Choose a customer from the list"
+          title={i18n.t("admin.customers.selectModal.select", { action: i18n.t("common.delete").toLowerCase() })}
+          subtitle={i18n.t("admin.customers.selectModal.choose")}
           customers={customers}
           onClose={() => setShowSelectForDelete(false)}
           onSelect={(c) => {
@@ -1908,8 +1689,8 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
 
       {showSelectForRestore && (
         <CustomerSelectModal
-          title="Select Customer to Restore"
-          subtitle="Choose a deleted customer to restore"
+          title={i18n.t("admin.customers.selectModal.select", { action: i18n.t("admin.customers.actions.restore").toLowerCase() })}
+          subtitle={i18n.t("admin.customers.selectModal.choose")}
           customers={deletedCustomers}
           onClose={() => setShowSelectForRestore(false)}
           onSelect={(c) => handleRestoreCustomer(c)}
@@ -1918,31 +1699,28 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
 
       {showSelectForPermanentDelete && deletedCustomers.length > 0 && (
         <CustomerSelectModal
-          title="Select Customer to Delete Permanently"
-          subtitle="Warning: This action cannot be undone!"
+          title={i18n.t("admin.customers.selectModal.select", { action: i18n.t("admin.customers.actions.permanentDelete").toLowerCase() })}
+          subtitle={i18n.t("admin.customers.permanentDeleteModal.warning")}
           customers={deletedCustomers}
-          onClose={() => {
-            setShowSelectForPermanentDelete(false);
-            setSelectedCustomer(null);
-          }}
+          onClose={() => setShowSelectForPermanentDelete(false)}
           onSelect={(c) => {
             setSelectedCustomer(c);
-            setShowSelectForPermanentDelete(false); // Close selection modal
-            setShowPermanentDeleteConfirm(true); // Open confirmation modal
+            showAlert(
+              i18n.t("admin.customers.permanentDeleteModal.title") || "Confirm Permanent Delete",
+              i18n.t("admin.customers.permanentDeleteModal.message", { name: c.customerName }),
+              [
+                { text: i18n.t("common.cancel"), style: "cancel", onPress: () => setShowSelectForPermanentDelete(false) },
+                {
+                  text: i18n.t("admin.customers.permanentDeleteModal.deleteForever") || "Delete Forever",
+                  style: "destructive",
+                  onPress: () => handlePermanentDeleteCustomer()
+                }
+              ]
+            );
           }}
         />
       )}
 
-      {showPermanentDeleteConfirm && selectedCustomer && (
-        <PermanentDeleteConfirmModal
-          customer={selectedCustomer}
-          onClose={() => {
-            setShowPermanentDeleteConfirm(false);
-            setSelectedCustomer(null);
-          }}
-          onConfirm={() => handlePermanentDeleteCustomer(selectedCustomer)}
-        />
-      )}
     </SafeAreaView>
   );
 }
@@ -1958,8 +1736,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollViewContent: {
-    paddingBottom: 40,
-    flexGrow: 1, // Extra padding at bottom for scrolling
+    paddingBottom: 40, // Extra padding at bottom for scrolling
   },
   
   // HEADER
@@ -1990,11 +1767,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   logo: {
-    width: 360,
-    height: 150,
-    marginRight: 10,
-    marginLeft: -80, 
-    marginBottom: -10,
+    width: 120,
+    height: 50,
   },
   adminBadge: {
     flexDirection: "row",
@@ -2372,7 +2146,7 @@ actionCardDescription: {
   },
   modalOverlay: {
     flex: 1,
-    justifyContent: "flex-start",
+    justifyContent: "center",
     padding: 20,
   },
   modalCard: {
@@ -2381,7 +2155,6 @@ actionCardDescription: {
     maxHeight: "90%",
     maxWidth: 500,
     alignSelf: "center",
-    overflow: "hidden",
     width: "100%",
     shadowColor: "#000",
     shadowOffset: {
@@ -2423,7 +2196,6 @@ actionCardDescription: {
     textAlign: "center",
   },
   modalForm: {
-    flex: 1,
     padding: 24,
   },
   sectionTitle: {
@@ -2918,4 +2690,7 @@ actionCardDescription: {
     fontWeight: '600',
     marginRight: 4,
   },
+  dropdownIcon: {
+    marginLeft: 4,
+  }
 });

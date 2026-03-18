@@ -19,8 +19,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import apiService from "../../services/apiService";
 import pestfreeLogo from "../../../assets/pestfree_logo.png";
 import { incrementTodayRequests } from './Statistics';
-import DatePicker from 'react-datepicker';
-import 'react-datepicker/dist/react-datepicker.min.css';
+import i18n from "../../services/i18n";
 
 export default function CustomerRequestScreen({ onClose }) {
   const [requests, setRequests] = useState([]);
@@ -38,7 +37,11 @@ export default function CustomerRequestScreen({ onClose }) {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [appointmentDate, setAppointmentDate] = useState(new Date());
-  const [appointmentTime, setAppointmentTime] = useState(new Date());
+  const [appointmentTime, setAppointmentTime] = useState(() => {
+  const now = new Date();
+      now.setHours(9, 0, 0, 0);
+    return now;
+  });
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [showServiceDropdown, setShowServiceDropdown] = useState(false);
   const [showSpecialSubtypeDropdown, setShowSpecialSubtypeDropdown] = useState(false);
@@ -47,28 +50,63 @@ export default function CustomerRequestScreen({ onClose }) {
   const [insecticideDetails, setInsecticideDetails] = useState('');
   const [disinfectionDetails, setDisinfectionDetails] = useState('');
   const [otherPestName, setOtherPestName] = useState(selectedRequest?.other_pest_name || '');
-  const [processingDeclineId, setProcessingDeclineId] = useState(null);
-  
+  const IMAGE_BASE =
+  "https://field-inspections-backend-production.up.railway.app/uploads/";
   const [showPasswordResetModal, setShowPasswordResetModal] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [verifyPassword, setVerifyPassword] = useState("");
   const [appointmentPrice, setAppointmentPrice] = useState("");
   const [appointmentCategory, setAppointmentCategory] = useState("first_time");
   const [complianceValidUntil, setComplianceValidUntil] = useState("");
+  const [isImageViewerVisible, setIsImageViewerVisible] = useState(false);
+  const [viewerImages, setViewerImages] = useState([]);
+  const [viewerIndex, setViewerIndex] = useState(0);
   const APPOINTMENT_CATEGORIES = [
-    { id: "first_time", label: "First-Time Appointment" },
-    { id: "follow_up", label: "Follow-Up Visit" },
-    { id: "one_time", label: "One-Time Treatment" },
-    { id: "installation", label: "Installation Appointment" },
-    { id: "inspection", label: "Inspection / Assessment" },
-    { id: "emergency", label: "Emergency Call-Out" },
-    { id: "contract_service", label: "Contract / Recurring Service" },
+    { id: "first_time", label: i18n.t("admin.schedule.appointmentCategory.first_time") },
+    { id: "follow_up", label: i18n.t("admin.schedule.appointmentCategory.follow_up") },
+    { id: "one_time", label: i18n.t("admin.schedule.appointmentCategory.one_time") },
+    { id: "installation", label: i18n.t("admin.schedule.appointmentCategory.installation") },
+    { id: "inspection", label: i18n.t("admin.schedule.appointmentCategory.inspection") },
+    { id: "emergency", label: i18n.t("admin.schedule.appointmentCategory.emergency") },
+    { id: "contract_service", label: i18n.t("admin.schedule.appointmentCategory.contract_service") },
   ];
-  const [showCompliancePicker, setShowCompliancePicker] = useState(false);
-  const [showEditCompliancePicker, setShowEditCompliancePicker] = useState(false); // For edit mode if needed
-  const isWeb = Platform.OS === "web";
+  const [showCompliancePicker, setShowCompliancePicker] = useState(false); // For compliance date if needed
+  
+  const showAlert = (title, message, buttons) => {
+    if (Platform.OS === 'web') {
+      // For web/desktop, use window.confirm for simple confirmations
+      if (buttons && buttons.length > 0) {
+        // Check if it's a confirm/cancel dialog (typically 2 buttons)
+        if (buttons.length === 2) {
+          const confirmAction = window.confirm(`${title}\n\n${message}`);
+          if (confirmAction) {
+            // User clicked OK/Confirm - execute the second button's onPress (usually the action)
+            if (buttons[1]?.onPress) {
+              buttons[1].onPress();
+            }
+          } else {
+            // User clicked Cancel - execute the first button's onPress if it exists
+            if (buttons[0]?.onPress) {
+              buttons[0].onPress();
+            }
+          }
+        } else {
+          // Simple alert with just an OK button
+          window.alert(`${title}\n\n${message}`);
+          if (buttons[0]?.onPress) {
+            buttons[0].onPress();
+          }
+        }
+      } else {
+        window.alert(`${title}\n\n${message}`);
+      }
+    } else {
+      // For mobile, use React Native Alert
+      Alert.alert(title, message, buttons);
+    }
+  };
 
-    const formatTime = (timeStr) => {
+  const formatTime = (timeStr) => {
     if (!timeStr) return "";
 
     // If it's already in HH:MM format, return as-is
@@ -81,29 +119,49 @@ export default function CustomerRequestScreen({ onClose }) {
       return timeStr.slice(0, 5); // "HH:MM"
     }
 
-    // ISO timestamp
+    // Handle Date objects or ISO strings - FORCE 24-hour format
     try {
       const d = new Date(timeStr);
       if (!isNaN(d.getTime())) {
-        return `${d.getHours().toString().padStart(2, "0")}:${d
-          .getMinutes()
-          .toString()
-          .padStart(2, "0")}`;
-      }
-    } catch {}
-
-    // Any other format, try to parse and format
-    try {
-      // Try to extract HH:MM from various formats
-      const match = timeStr.match(/(\d{1,2})[:.](\d{2})/);
-      if (match) {
-        const hours = parseInt(match[1]).toString().padStart(2, '0');
-        const minutes = match[2];
+        // Force 24-hour format with leading zeros
+        const hours = d.getHours().toString().padStart(2, '0');
+        const minutes = d.getMinutes().toString().padStart(2, '0');
         return `${hours}:${minutes}`;
       }
     } catch {}
 
+    // Try to extract HH:MM from any format and ensure 24-hour
+    try {
+      const match = timeStr.match(/(\d{1,2})[:.](\d{2})/);
+      if (match) {
+        let hours = parseInt(match[1]);
+        // Handle 12-hour format if detected (like "2:30 PM")
+        if (timeStr.toLowerCase().includes('pm') && hours < 12) {
+          hours += 12;
+        } else if (timeStr.toLowerCase().includes('am') && hours === 12) {
+          hours = 0;
+        }
+        const formattedHours = hours.toString().padStart(2, '0');
+        const minutes = match[2];
+        return `${formattedHours}:${minutes}`;
+      }
+    } catch {}
+
     return timeStr;
+  };
+
+  const setTimeIn24HourFormat = (timeString) => {
+    if (!timeString) return new Date();
+    
+    try {
+      // Parse HH:MM format
+      const [hours, minutes] = timeString.split(':').map(Number);
+      const date = new Date();
+      date.setHours(hours || 0, minutes || 0, 0, 0);
+      return date;
+    } catch {
+      return new Date();
+    }
   };
 
   useEffect(() => {
@@ -118,41 +176,39 @@ export default function CustomerRequestScreen({ onClose }) {
     }
   }, [selectedRequest]);
 
+  // When setting time from a string (like from preferred_time)
+  useEffect(() => {
+    if (selectedRequest?.preferred_time) {
+      setAppointmentTime(setTimeIn24HourFormat(selectedRequest.preferred_time));
+      setAppointmentData(prev => ({ 
+        ...prev, 
+        time: formatTime(selectedRequest.preferred_time) 
+      }));
+    }
+  }, [selectedRequest]);
+
   const loadData = async () => {
     setLoading(true);
     try {
-      console.log("🔄 Loading customer requests...");
-      
       // Load ALL pending requests
       const requestsResult = await apiService.getCustomerRequests("pending");
-      
-      console.log("📥 FULL API RESPONSE:", JSON.stringify(requestsResult, null, 2));
       
       let formattedRequests = [];
       
       if (requestsResult?.success && Array.isArray(requestsResult.requests)) {
-        console.log(`📊 Received ${requestsResult.requests.length} requests from API`);
-        
-        // Log the first request structure
-        if (requestsResult.requests.length > 0) {
-          console.log("🔍 First request structure:", JSON.stringify(requestsResult.requests[0], null, 2));
-        }
-        
         // Try different field names
         formattedRequests = requestsResult.requests.map((request, index) => {
-          // Debug each request
-          console.log(`📋 Request ${index} fields:`, Object.keys(request));
           
           return {
             id: request.id || request.requestId || `request-${index}`,
             customer_id: request.customerId || request.customer_id || 'unknown',
-            customer_name: request.customerName || request.customer_name || 'Unknown Customer',
+            customer_name: request.customerName || request.customer_name || i18n.t("admin.customerRequests.requestList.unknownCustomer") || 'Unknown Customer',
             customer_email: request.customerEmail || request.customer_email || '',
             service_type: request.serviceType || request.service_type || 'unknown',
             special_service_subtype: request.specialServiceSubtype || request.special_service_subtype || null,
             other_pest_name: request.otherPestName || request.other_pest_name || null,
             urgency: request.urgency || 'normal',
-            description: request.description || 'No description',
+            description: request.description || i18n.t("admin.customerRequests.requestList.noDescription") || 'No description',
             preferred_date: request.preferredDate || request.preferred_date || null,
             preferred_time: request.preferredTime || request.preferred_time || null,
             notes: request.notes || '',
@@ -169,32 +225,26 @@ export default function CustomerRequestScreen({ onClose }) {
               ),
             original_appointment_id: request.originalAppointmentId || request.original_appointment_id || null,
             original_date: extractOriginalDate(request.description || ''),
-            original_time: extractOriginalTime(request.description || '')
+            original_time: extractOriginalTime(request.description || ''),
+            images: request.images || [],
           };
         });
         
-        console.log(`✅ Formatted ${formattedRequests.length} requests`);
       } else {
         console.warn("⚠️ No valid requests array found in response");
       }
       
-      console.log(`✅ Total requests to display: ${formattedRequests.length}`);
-      
       // Force a state update
       setRequests(prev => {
-        console.log("🔄 Setting requests state. Old:", prev.length, "New:", formattedRequests.length);
         return formattedRequests;
       });
       
       // Load technicians
-      console.log("🔄 Loading technicians...");
       const techsResult = await apiService.getTechnicians();
       
       if (Array.isArray(techsResult)) {
-        console.log(`✅ Loaded ${techsResult.length} technicians`);
         setTechnicians(techsResult);
       } else if (techsResult?.technicians) {
-        console.log(`✅ Loaded ${techsResult.technicians.length} technicians`);
         setTechnicians(techsResult.technicians);
       } else {
         console.warn("⚠️ Unexpected technicians response format:", techsResult);
@@ -203,11 +253,23 @@ export default function CustomerRequestScreen({ onClose }) {
       
     } catch (error) {
       console.error("❌ Failed to load data:", error);
-      Alert.alert("Error", "Failed to load customer requests. Please try again.");
+      showAlert(i18n.t("common.error"), i18n.t("admin.customerRequests.loading") + " " + i18n.t("common.retry") || "Failed to load customer requests. Please try again.");
       setRequests([]);
     } finally {
       setLoading(false);
     }
+  };
+
+  const openImageViewer = (images, index) => {
+    if (!images || !Array.isArray(images) || images.length === 0) return;
+
+    const formatted = images.map(img => ({
+      uri: IMAGE_BASE + img
+    }));
+
+    setViewerImages(formatted);
+    setViewerIndex(index);
+    setIsImageViewerVisible(true);
   };
 
   const extractOriginalDate = (description) => {
@@ -230,7 +292,7 @@ export default function CustomerRequestScreen({ onClose }) {
 
   const submitPasswordReset = async () => {
     if (newPassword !== verifyPassword) {
-      Alert.alert("Error", "Passwords do not match");
+      showAlert(i18n.t("common.error"), i18n.t("admin.customerRequests.passwordModal.passwordMismatch") || "Passwords do not match");
       return;
     }
 
@@ -240,11 +302,11 @@ export default function CustomerRequestScreen({ onClose }) {
     );
 
     if (res.success) {
-      Alert.alert("Success", "Password updated");
+      showAlert(i18n.t("common.success"), i18n.t("admin.customerRequests.passwordModal.updateSuccess") || "Password updated");
       setShowPasswordResetModal(false);
       loadData();
     } else {
-      Alert.alert("Error", res.error || "Failed to update password");
+      showAlert(i18n.t("common.error"), res.error || i18n.t("admin.customerRequests.passwordModal.updateFailed") || "Failed to update password");
     }
   };
 
@@ -282,92 +344,93 @@ export default function CustomerRequestScreen({ onClose }) {
   };
 
   const handleDecline = async (request) => {
-    const confirmed = window.confirm(
-      `Decline request from ${request.customer_name}?`
-    );
+    showAlert(
+      i18n.t("admin.customerRequests.declineRequest") || "Decline Request",
+      i18n.t("admin.customerRequests.declineConfirm", { name: request.customer_name }) || `Decline request from ${request.customer_name}?`,
+      [
+        { text: i18n.t("common.cancel"), style: "cancel" },
+        {
+          text: i18n.t("admin.customerRequests.declineButton") || "Decline",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setProcessing(true);
 
-    if (!confirmed) return;
+              if (request.type === 'password_recovery') {
+                await processPasswordRecoveryRequest(request);
+              } else if (request.type === 'reschedule_request') {
+                // Try BOTH methods to see which one works
+                if (request.original_appointment_id) {
+                  
+                  // Method 1: Try the full name
+                  if (apiService.updateAppointmentRescheduleStatus) {
+                    const result = await apiService.updateAppointmentRescheduleStatus(
+                      request.original_appointment_id,
+                      {
+                        action: "decline",
+                        adminNotes: i18n.t("admin.customerRequests.declineNotes") || "Reschedule request declined"
+                      }
+                    );
+                  } 
+                  // Method 2: Try the short name
+                  else if (apiService.updateRescheduleStatus) {
+                    const result = await apiService.updateRescheduleStatus(
+                      request.original_appointment_id,
+                      {
+                        action: "decline",
+                        adminNotes: i18n.t("admin.customerRequests.declineNotes") || "Reschedule request declined"
+                      }
+                    );             
+                  }
+                  // Method 3: Fallback
+                  else {
+                    await apiService.updateAppointment({
+                      id: request.original_appointment_id,
+                      status: 'scheduled'
+                    });
+                  }
+                }
+              } else {
+                await apiService.updateCustomerRequestStatus(
+                  request.id,
+                  "declined",
+                  null,
+                  i18n.t("admin.customerRequests.declineNotes") || "Service request declined"
+                );
+              }
 
-    try {
-      setProcessingDeclineId(request.id);
-
-      if (request.type === 'password_recovery') {
-        await processPasswordRecoveryRequest(request);
-      }
-      else if (request.type === 'reschedule_request') {
-        if (request.original_appointment_id) {
-          await apiService.updateRescheduleStatus(
-            request.original_appointment_id,
-            {
-              action: "decline",
-              adminNotes: "Reschedule request declined"
+              loadData();
+            } catch (err) {
+              console.error("❌ Decline failed:", err);
+              showAlert(i18n.t("common.error"), err.message);
+            } finally {
+              setProcessing(false);
             }
-          );
+          }
         }
-      }
-
-      const result = await apiService.updateCustomerRequestStatus(
-        request.id,
-        "declined",
-        null,
-        "Request declined by admin"
-      );
-
-      if (!result?.success) {
-        throw new Error(result?.error || "Failed to update request");
-      }
-
-      setRequests(prev => prev.filter(r => r.id !== request.id));
-
-      window.alert("Request has been declined");
-
-    } catch (err) {
-      console.error("❌ Decline failed:", err);
-      window.alert(err.message || "Failed to decline request");
-    } finally {
-      setProcessingDeclineId(null);
-    }
-  };
-
-  const closeAndRefresh = () => {
-    setShowAppointmentModal(false);
-    setSelectedRequest(null);
-
-    // Clear appointment-related state (important)
-    setAppointmentData({
-      technicianId: "",
-      date: "",
-      time: ""
-    });
-    setAppointmentPrice("");
-    setComplianceValidUntil("");
-    setSpecialServiceSubtype(null);
-    setOtherPestName("");
-    setInsecticideDetails("");
-    setDisinfectionDetails("");
-
-    loadData();
+      ]
+    );
   };
 
   const serviceTypes = [
-    { id: "myocide", label: "Myocide", description: "Standard bait station service", icon: "pest-control-rodent", color: "#1f9c8b" },
-    { id: "disinfection", label: "Disinfection", description: "Disinfection service", icon: "clean-hands", color: "#1f9c8b" },
-    { id: "insecticide", label: "Insecticide", description: "Insecticide treatment", icon: "pest-control", color: "#1f9c8b" },
-    { id: "special", label: "Special Service", description: "Custom pest control services", icon: "star", color: "#1f9c8b" },
+    { id: "myocide", label: i18n.t("admin.schedule.serviceType.myocide.label"), description: i18n.t("admin.schedule.serviceType.myocide.description"), icon: "pest-control-rodent", color: "#1f9c8b" },
+    { id: "disinfection", label: i18n.t("admin.schedule.serviceType.disinfection.label"), description: i18n.t("admin.schedule.serviceType.disinfection.description"), icon: "clean-hands", color: "#1f9c8b" },
+    { id: "insecticide", label: i18n.t("admin.schedule.serviceType.insecticide.label"), description: i18n.t("admin.schedule.serviceType.insecticide.description"), icon: "pest-control", color: "#1f9c8b" },
+    { id: "special", label: i18n.t("admin.schedule.serviceType.special.label"), description: i18n.t("admin.schedule.serviceType.special.description"), icon: "star", color: "#1f9c8b" },
   ];
 
   const specialServiceSubtypes = [
-    { id: "grass_cutworm", label: "Grass Cutworm", icon: "seedling", library: "FontAwesome5" },
-    { id: "fumigation", label: "Fumigation", icon: "cloud", library: "Feather" },
-    { id: "termites", label: "Termites", icon: "bug", library: "FontAwesome5" },
-    { id: "exclusion", label: "Exclusion Service", icon: "block", library: "Entypo" },
-    { id: "snake_repulsion", label: "Snake Repulsion", icon: "snake", library: "MaterialCommunityIcons" },
-    { id: "bird_control", label: "Bird Control", icon: "feather", library: "Feather" },
-    { id: "bed_bugs", label: "Bed Bugs", icon: "bug-report", library: "MaterialIcons" },
-    { id: "fleas", label: "Fleas", icon: "paw", library: "FontAwesome5" },
-    { id: "plant_protection", label: "Plant Protection", icon: "grass", library: "MaterialIcons" },
-    { id: "palm_weevil", label: "Palm Weevil", icon: "tree", library: "FontAwesome5" },
-    { id: "other", label: "Other", icon: "more-horizontal", library: "Feather" },
+    { id: "grass_cutworm", label: i18n.t("admin.schedule.specialSubtypes.grass_cutworm"), icon: "seedling", library: "FontAwesome5" },
+    { id: "fumigation", label: i18n.t("admin.schedule.specialSubtypes.fumigation"), icon: "cloud", library: "Feather" },
+    { id: "termites", label: i18n.t("admin.schedule.specialSubtypes.termites"), icon: "bug", library: "FontAwesome5" },
+    { id: "exclusion", label: i18n.t("admin.schedule.specialSubtypes.exclusion"), icon: "block", library: "Entypo" },
+    { id: "snake_repulsion", label: i18n.t("admin.schedule.specialSubtypes.snake_repulsion"), icon: "snake", library: "MaterialCommunityIcons" },
+    { id: "bird_control", label: i18n.t("admin.schedule.specialSubtypes.bird_control"), icon: "feather", library: "Feather" },
+    { id: "bed_bugs", label: i18n.t("admin.schedule.specialSubtypes.bed_bugs"), icon: "bug-report", library: "MaterialIcons" },
+    { id: "fleas", label: i18n.t("admin.schedule.specialSubtypes.fleas"), icon: "paw", library: "FontAwesome5" },
+    { id: "plant_protection", label: i18n.t("admin.schedule.specialSubtypes.plant_protection"), icon: "grass", library: "MaterialIcons" },
+    { id: "palm_weevil", label: i18n.t("admin.schedule.specialSubtypes.palm_weevil"), icon: "tree", library: "FontAwesome5" },
+    { id: "other", label: i18n.t("admin.schedule.specialSubtypes.other"), icon: "more-horizontal", library: "Feather" },
   ];
 
   // Helper function to get icon component
@@ -399,8 +462,8 @@ export default function CustomerRequestScreen({ onClose }) {
         status,
         null,
         status === 'accepted'
-          ? 'Service request accepted'
-          : 'Service request declined'
+          ? i18n.t("admin.customerRequests.acceptNotes") || 'Service request accepted'
+          : i18n.t("admin.customerRequests.declineNotes") || 'Service request declined'
       );
 
       if (!result.success) {
@@ -410,16 +473,16 @@ export default function CustomerRequestScreen({ onClose }) {
       setRequests(prev => prev.filter(r => r.id !== request.id));
       loadData();
 
-      Alert.alert(
-        'Success',
+      showAlert(
+        i18n.t("common.success"),
         status === 'accepted'
-          ? 'Service request accepted'
-          : 'Service request declined'
+          ? i18n.t("admin.customerRequests.acceptSuccess") || 'Service request accepted'
+          : i18n.t("admin.customerRequests.declineSuccess") || 'Service request declined'
       );
 
     } catch (err) {
       console.error("❌ Service request error:", err);
-      Alert.alert("Error", err.message);
+      showAlert(i18n.t("common.error"), err.message);
     } finally {
       setProcessing(false);
     }
@@ -433,7 +496,7 @@ export default function CustomerRequestScreen({ onClose }) {
         request.id,
         'declined',
         null,
-        'Password recovery request declined'
+        i18n.t("admin.customerRequests.passwordModal.declineNotes") || 'Password recovery request declined'
       );
 
       if (!result?.success) {
@@ -443,7 +506,7 @@ export default function CustomerRequestScreen({ onClose }) {
       setRequests(prev => prev.filter(r => r.id !== request.id));
       loadData();
     } catch (err) {
-      Alert.alert("Error", err.message);
+      showAlert(i18n.t("common.error"), err.message);
     } finally {
       setProcessing(false);
     }
@@ -452,17 +515,17 @@ export default function CustomerRequestScreen({ onClose }) {
   const createAppointmentFromRequest = async () => {
     // Validation checks
     if (!appointmentData.technicianId || !appointmentData.date || !appointmentData.time) {
-      Alert.alert("Error", "Please fill all appointment fields");
+      showAlert(i18n.t("common.error"), i18n.t("admin.customerRequests.appointmentModal.fillAllFields") || "Please fill all appointment fields");
       return;
     }
 
     if (!appointmentPrice || appointmentPrice === "") {
-      Alert.alert("Error", "Service price is required");
+      showAlert(i18n.t("common.error"), i18n.t("admin.customerRequests.appointmentModal.priceRequired") || "Service price is required");
       return;
     }
 
     if (!appointmentCategory) {
-      Alert.alert("Error", "Appointment category is required");
+      showAlert(i18n.t("common.error"), i18n.t("admin.customerRequests.appointmentModal.categoryRequired") || "Appointment category is required");
       return;
     }
 
@@ -473,18 +536,18 @@ export default function CustomerRequestScreen({ onClose }) {
 
     // Validate compliance for Myocide
     if (finalServiceType === 'myocide' && !complianceValidUntil) {
-      Alert.alert("Error", "Compliance Valid Until is required for Myocide services");
+      showAlert(i18n.t("common.error"), i18n.t("admin.customerRequests.appointmentModal.complianceRequired") || "Compliance Valid Until is required for Myocide services");
       return;
     }
 
     // For NEW service requests with special type, still validate
     if (selectedRequest.type !== 'reschedule_request' && finalServiceType === 'special' && !specialServiceSubtype) {
-      Alert.alert("Error", "Please select a specific service type for Special Service");
+      showAlert(i18n.t("common.error"), i18n.t("admin.customerRequests.appointmentModal.specialRequired") || "Please select a specific service type for Special Service");
       return;
     }
 
     if (selectedRequest.type !== 'reschedule_request' && finalServiceType === 'special' && specialServiceSubtype === 'other' && !otherPestName.trim()) {
-      Alert.alert("Error", "Please type the name of the pest for 'Other' service");
+      showAlert(i18n.t("common.error"), i18n.t("admin.customerRequests.appointmentModal.otherPestRequired") || "Please type the name of the pest for 'Other' service");
       return;
     }
 
@@ -518,60 +581,56 @@ export default function CustomerRequestScreen({ onClose }) {
             const subtypeLabel = getSpecialServiceLabel(specialServiceSubtype) || specialServiceSubtype;
             payload.otherPestName = subtypeLabel;
           }
-          console.log("🟢 Added special service details to payload:", {
-            specialServiceSubtype: payload.specialServiceSubtype,
-            otherPestName: payload.otherPestName
-          });
         } else if (finalServiceType === 'myocide') {
-          payload.otherPestName = 'Myocide Service';
-          console.log("🟢 Added myocide service to payload");
+          payload.otherPestName = i18n.t("admin.schedule.serviceType.myocide.label") || 'Myocide Service';
         }
         // 🚨 CRITICAL FIX: For insecticide and disinfection, use admin's typed details
         else if (finalServiceType === 'insecticide') {
           // Use the admin's typed insecticideDetails instead of customer's description
-          payload.otherPestName = insecticideDetails.trim() || selectedRequest.description || 'Insecticide Treatment';
-          payload.insecticideDetails = insecticideDetails.trim() || selectedRequest.description || 'Insecticide Treatment';
-          console.log("🟢 Added insecticide details from ADMIN:", insecticideDetails.trim());
+          payload.otherPestName = insecticideDetails.trim() || selectedRequest.description || i18n.t("admin.schedule.treatmentDetails.insecticideDefault") || 'Insecticide Treatment';
+          payload.insecticideDetails = insecticideDetails.trim() || selectedRequest.description || i18n.t("admin.schedule.treatmentDetails.insecticideDefault") || 'Insecticide Treatment';
         } else if (finalServiceType === 'disinfection') {
           // Use the admin's typed disinfectionDetails instead of customer's description
-          payload.otherPestName = disinfectionDetails.trim() || selectedRequest.description || 'Disinfection Service';
-          payload.disinfection_details = disinfectionDetails.trim() || selectedRequest.description || 'Disinfection Service';
-          console.log("🟢 Added disinfection details from ADMIN:", disinfectionDetails.trim());
+          payload.otherPestName = disinfectionDetails.trim() || selectedRequest.description || i18n.t("admin.schedule.treatmentDetails.disinfectionDefault") || 'Disinfection Service';
+          payload.disinfection_details = disinfectionDetails.trim() || selectedRequest.description || i18n.t("admin.schedule.treatmentDetails.disinfectionDefault") || 'Disinfection Service';
         }
       }
-
-      console.log("📤 Creating appointment with payload:", payload);
 
       const appointmentResult = await apiService.createAppointment(payload);
 
       if (appointmentResult.success) {
         const appointmentId = appointmentResult.data?.id || appointmentResult.id;
-
+        
+        // Update the customer request status
         await apiService.updateCustomerRequestStatus(
           selectedRequest.id,
           'accepted',
           appointmentId,
           selectedRequest.type === 'reschedule_request'
-            ? 'Reschedule request approved'
-            : 'Request accepted and appointment scheduled'
+            ? i18n.t("admin.customerRequests.appointmentModal.rescheduleApproved") || 'Reschedule request approved'
+            : i18n.t("admin.customerRequests.appointmentModal.requestAccepted") || 'Request accepted and appointment scheduled'
         );
-
+        
+        // Remove from list
         setRequests(prev => prev.filter(req => req.id !== selectedRequest.id));
-
-        Alert.alert(
-          "Success",
+        
+        showAlert(i18n.t("common.success"), 
           selectedRequest.type === 'reschedule_request'
-            ? "Reschedule approved successfully!"
-            : "Appointment created successfully!"
+            ? i18n.t("admin.customerRequests.appointmentModal.rescheduleSuccess") || "Reschedule approved successfully!"
+            : i18n.t("admin.customerRequests.appointmentModal.createSuccess") || "Appointment created successfully!",
+          [
+            { text: "OK", onPress: () => {
+              setShowAppointmentModal(false);
+              loadData(); // Refresh the list
+            }}
+          ]
         );
-
-        closeAndRefresh();
       } else {
-        throw new Error(appointmentResult.error || "Failed to create appointment");
+        throw new Error(appointmentResult.error || i18n.t("admin.customerRequests.appointmentModal.createFailed") || "Failed to create appointment");
       }
     } catch (error) {
       console.error("❌ Error creating appointment:", error);
-      Alert.alert("Error", error.message || "Failed to create appointment");
+      showAlert(i18n.t("common.error"), error.message || i18n.t("admin.customerRequests.appointmentModal.createFailed") || "Failed to create appointment");
     } finally {
       setProcessing(false);
     }
@@ -579,48 +638,47 @@ export default function CustomerRequestScreen({ onClose }) {
 
   const getSpecialServiceLabel = (subtype) => {
     const subtypeLabels = {
-      'grass_cutworm': 'Grass Cutworm',
-      'fumigation': 'Fumigation',
-      'termites': 'Termites',
-      'exclusion': 'Exclusion Service',
-      'snake_repulsion': 'Snake Repulsion',
-      'bird_control': 'Bird Control',
-      'bed_bugs': 'Bed Bugs',
-      'fleas': 'Fleas',
-      'plant_protection': 'Plant Protection',
-      'palm_weevil': 'Palm Weevil',
-      'other': 'Other'
+      'grass_cutworm': i18n.t("admin.schedule.specialSubtypes.grass_cutworm"),
+      'fumigation': i18n.t("admin.schedule.specialSubtypes.fumigation"),
+      'termites': i18n.t("admin.schedule.specialSubtypes.termites"),
+      'exclusion': i18n.t("admin.schedule.specialSubtypes.exclusion"),
+      'snake_repulsion': i18n.t("admin.schedule.specialSubtypes.snake_repulsion"),
+      'bird_control': i18n.t("admin.schedule.specialSubtypes.bird_control"),
+      'bed_bugs': i18n.t("admin.schedule.specialSubtypes.bed_bugs"),
+      'fleas': i18n.t("admin.schedule.specialSubtypes.fleas"),
+      'plant_protection': i18n.t("admin.schedule.specialSubtypes.plant_protection"),
+      'palm_weevil': i18n.t("admin.schedule.specialSubtypes.palm_weevil"),
+      'other': i18n.t("admin.schedule.specialSubtypes.other")
     };
     
     return subtypeLabels[subtype] || subtype;
   };
 
-  function toISODate(d) {
-    if (!(d instanceof Date) || isNaN(d.getTime())) return "";
-    return d.toISOString().split("T")[0];
-  }
-
-  const handleDateChange = (event, selectedDate) => {
-    setShowDatePicker(false);
-    if (selectedDate) {
-      setAppointmentDate(selectedDate);
-      // Store ONLY the date portion (YYYY-MM-DD)
-      const formattedDate = selectedDate.toISOString().split('T')[0];
-      setAppointmentData(prev => ({ ...prev, date: formattedDate }));
-    }
-  };
+    const handleDateChange = (event, selectedDate) => {
+      setShowDatePicker(false);
+      if (Platform.OS === 'web') {
+        // Web handling is done through the input onChange
+        return;
+      }
+      if (selectedDate) {
+        setAppointmentDate(selectedDate);
+        // Store ONLY the date portion (YYYY-MM-DD)
+        const formattedDate = selectedDate.toISOString().split('T')[0];
+        setAppointmentData(prev => ({ ...prev, date: formattedDate }));
+      }
+    };
 
   const handleTimeChange = (event, selectedTime) => {
     setShowTimePicker(false);
-    if (selectedTime) {
+    // For web, we don't use this function at all
+    // The HTML5 input handles it directly
+    if (Platform.OS !== 'web' && selectedTime) {
       setAppointmentTime(selectedTime);
       
-      // FORCE format to HH:MM without seconds
+      // FORCE 24-hour format with leading zeros
       const hours = selectedTime.getHours().toString().padStart(2, '0');
       const minutes = selectedTime.getMinutes().toString().padStart(2, '0');
       const formattedTime = `${hours}:${minutes}`;
-      
-      console.log("🕒 Formatted time:", formattedTime, "from:", selectedTime);
       
       setAppointmentData(prev => ({ 
         ...prev, 
@@ -631,28 +689,28 @@ export default function CustomerRequestScreen({ onClose }) {
 
   const approveReschedule = async () => {
     if (!appointmentData.date || !appointmentData.time) {
-      Alert.alert("Error", "Please select date and time");
+      showAlert(i18n.t("common.error"), i18n.t("admin.customerRequests.appointmentModal.selectDateTime") || "Please select date and time");
       return;
     }
 
     if (!appointmentData.technicianId) {
-      Alert.alert("Error", "Please select a technician");
+      showAlert(i18n.t("common.error"), i18n.t("admin.customerRequests.appointmentModal.selectTechnician") || "Please select a technician");
       return;
     }
 
     if (!appointmentPrice || appointmentPrice === "") {
-      Alert.alert("Error", "Service price is required");
+      showAlert(i18n.t("common.error"), i18n.t("admin.customerRequests.appointmentModal.priceRequired") || "Service price is required");
       return;
     }
 
     if (!appointmentCategory) {
-      Alert.alert("Error", "Appointment category is required");
+      showAlert(i18n.t("common.error"), i18n.t("admin.customerRequests.appointmentModal.categoryRequired") || "Appointment category is required");
       return;
     }
 
     // Only validate compliance for Myocide services
     if (selectedRequest?.service_type === 'myocide' && !complianceValidUntil) {
-      Alert.alert("Error", "Compliance Valid Until is required for Myocide services");
+      showAlert(i18n.t("common.error"), i18n.t("admin.customerRequests.appointmentModal.complianceRequired") || "Compliance Valid Until is required for Myocide services");
       return;
     }
 
@@ -668,17 +726,13 @@ export default function CustomerRequestScreen({ onClose }) {
         complianceValidUntil: complianceValidUntil || null,
         technicianId: appointmentData.technicianId, // Include technicianId
         appointmentCategory: appointmentCategory,
-        adminNotes: "Reschedule approved"
+        adminNotes: i18n.t("admin.customerRequests.appointmentModal.rescheduleApproved") || "Reschedule approved"
       };
-
-      console.log("📤 Sending reschedule approval payload:", payload);
 
       const rescheduleResult = await apiService.updateRescheduleStatus(
         selectedRequest.original_appointment_id,
         payload
       );
-
-      console.log("📥 Reschedule approval response:", rescheduleResult);
 
       if (rescheduleResult.success) {
         // Update the customer request status
@@ -686,62 +740,65 @@ export default function CustomerRequestScreen({ onClose }) {
           selectedRequest.id,
           "accepted",
           rescheduleResult.appointment?.id || null,
-          "Reschedule approved - old appointment deleted"
+          i18n.t("admin.customerRequests.appointmentModal.rescheduleApprovedNotes") || "Reschedule approved - old appointment deleted"
         );
 
-        Alert.alert(
-          "Success",
-          "Reschedule approved. Old appointment deleted, new appointment created."
-        );
-
-        closeAndRefresh();
+        showAlert(i18n.t("common.success"), i18n.t("admin.customerRequests.appointmentModal.rescheduleSuccessDetailed") || "Reschedule approved. Old appointment deleted, new appointment created.", [
+          {
+            text: "OK",
+            onPress: () => {
+              setShowAppointmentModal(false);
+              loadData(); // Refresh the list
+            }
+          }
+        ]);
       } else {
-        throw new Error(rescheduleResult.error || "Failed to approve reschedule");
+        throw new Error(rescheduleResult.error || i18n.t("admin.customerRequests.appointmentModal.rescheduleFailed") || "Failed to approve reschedule");
       }
 
     } catch (err) {
       console.error("❌ Reschedule approval failed:", err);
-      Alert.alert("Error", err.message || "Failed to approve reschedule");
+      showAlert(i18n.t("common.error"), err.message || i18n.t("admin.customerRequests.appointmentModal.rescheduleFailed") || "Failed to approve reschedule");
     } finally {
       setProcessing(false);
     }
   };
 
   const getServiceTypeLabel = (serviceType, subtype, otherPest = null) => {
-    if (!serviceType) return 'Unknown Service';
+    if (!serviceType) return i18n.t("serviceTypes.unknown") || 'Unknown Service';
     
     const labels = {
-      'myocide': 'Myocide',
-      'disinfection': 'Disinfection',
-      'insecticide': 'Insecticide',
-      'special': 'Special Service'
+      'myocide': i18n.t("serviceTypes.myocide"),
+      'disinfection': i18n.t("serviceTypes.disinfection"),
+      'insecticide': i18n.t("serviceTypes.insecticide"),
+      'special': i18n.t("serviceTypes.special")
     };
     
     let label = labels[serviceType] || serviceType;
     
     if (serviceType === 'special' && subtype) {
       const subtypeLabels = {
-        'grass_cutworm': 'Grass Cutworm',
-        'fumigation': 'Fumigation',
-        'termites': 'Termites',
-        'exclusion': 'Exclusion Service',
-        'snake_repulsion': 'Snake Repulsion',
-        'bird_control': 'Bird Control',
-        'bed_bugs': 'Bed Bugs',
-        'fleas': 'Fleas',
-        'plant_protection': 'Plant Protection',
-        'palm_weevil': 'Palm Weevil',
-        'other': 'Other'
+        'grass_cutworm': i18n.t("admin.schedule.specialSubtypes.grass_cutworm"),
+        'fumigation': i18n.t("admin.schedule.specialSubtypes.fumigation"),
+        'termites': i18n.t("admin.schedule.specialSubtypes.termites"),
+        'exclusion': i18n.t("admin.schedule.specialSubtypes.exclusion"),
+        'snake_repulsion': i18n.t("admin.schedule.specialSubtypes.snake_repulsion"),
+        'bird_control': i18n.t("admin.schedule.specialSubtypes.bird_control"),
+        'bed_bugs': i18n.t("admin.schedule.specialSubtypes.bed_bugs"),
+        'fleas': i18n.t("admin.schedule.specialSubtypes.fleas"),
+        'plant_protection': i18n.t("admin.schedule.specialSubtypes.plant_protection"),
+        'palm_weevil': i18n.t("admin.schedule.specialSubtypes.palm_weevil"),
+        'other': i18n.t("admin.schedule.specialSubtypes.other")
       };
       
       const subtypeLabel = subtypeLabels[subtype] || subtype;
       
       if (subtype === 'other' && otherPest) {
-        label = `Special Service - Other (${otherPest})`;
+        label = `${i18n.t("serviceTypes.special")} - ${i18n.t("admin.schedule.specialSubtypes.other")} (${otherPest})`;
       } else if (subtype !== 'other') {
-        label = `Special Service - ${subtypeLabel}`;
+        label = `${i18n.t("serviceTypes.special")} - ${subtypeLabel}`;
       } else {
-        label = `Special Service - ${subtypeLabel}`;
+        label = `${i18n.t("serviceTypes.special")} - ${subtypeLabel}`;
       }
     }
     
@@ -755,6 +812,16 @@ export default function CustomerRequestScreen({ onClose }) {
       case 'normal': return '#1f9c8b';
       case 'low': return '#1f9c8b';
       default: return '#666';
+    }
+  };
+
+  const getUrgencyLabel = (urgency) => {
+    switch(urgency) {
+      case 'emergency': return i18n.t("urgency.emergency");
+      case 'high': return i18n.t("urgency.high");
+      case 'normal': return i18n.t("urgency.normal");
+      case 'low': return i18n.t("urgency.low");
+      default: return i18n.t("urgency.normal");
     }
   };
 
@@ -785,7 +852,7 @@ export default function CustomerRequestScreen({ onClose }) {
   };
 
   const formatDate = (dateString) => {
-    if (!dateString) return 'Not specified';
+    if (!dateString) return i18n.t("admin.customerRequests.detailsModal.notSpecified") || 'Not specified';
     
     try {
       // Handle different date formats
@@ -817,19 +884,19 @@ export default function CustomerRequestScreen({ onClose }) {
     const hasDate = !!dateString;
     const hasTime = !!timeString;
 
-    if (!hasDate && !hasTime) return "Not specified";
+    if (!hasDate && !hasTime) return i18n.t("admin.customerRequests.detailsModal.notSpecified") || "Not specified";
 
-    const datePart = hasDate ? formatDate(dateString) : "Date not specified";
+    const datePart = hasDate ? formatDate(dateString) : i18n.t("admin.customerRequests.dateNotSpecified") || "Date not specified";
     const timePart = hasTime ? formatTime(timeString) : null;
 
-    return timePart ? `${datePart} at ${timePart}` : datePart;
+    return timePart ? `${datePart} ${i18n.t("admin.customerRequests.at") || "at"} ${timePart}` : datePart;
   };
 
   if (loading) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#1f9c8b" />
-        <Text style={styles.loadingText}>Loading Customer Requests...</Text>
+        <Text style={styles.loadingText}>{i18n.t("admin.customerRequests.loading")}</Text>
       </SafeAreaView>
     );
   }
@@ -847,7 +914,7 @@ export default function CustomerRequestScreen({ onClose }) {
               <Image source={pestfreeLogo} style={styles.logo} resizeMode="contain" />
               <View style={styles.adminBadge}>
                 <MaterialIcons name="request-page" size={14} color="#fff" />
-                <Text style={styles.adminBadgeText}>REQUESTS</Text>
+                <Text style={styles.adminBadgeText}>{i18n.t("admin.customerRequests.header.badge")}</Text>
               </View>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -856,10 +923,10 @@ export default function CustomerRequestScreen({ onClose }) {
           </View>
 
           <View style={styles.headerContent}>
-            <Text style={styles.welcomeText}>Service & Reschedule Requests</Text>
-            <Text style={styles.title}>Request Management</Text>
+            <Text style={styles.welcomeText}>{i18n.t("admin.customerRequests.header.welcome")}</Text>
+            <Text style={styles.title}>{i18n.t("admin.customerRequests.header.title")}</Text>
             <Text style={styles.subtitle}>
-              Review and manage customer service requests and reschedule requests
+              {i18n.t("admin.customerRequests.header.subtitle")}
             </Text>
           </View>
         </View>
@@ -870,7 +937,7 @@ export default function CustomerRequestScreen({ onClose }) {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <MaterialIcons name="dashboard" size={20} color="#2c3e50" />
-              <Text style={styles.sectionTitle}>Request Overview</Text>
+              <Text style={styles.sectionTitle}>{i18n.t("admin.customerRequests.overview.title")}</Text>
             </View>
 
             <View style={styles.statsGrid}>
@@ -879,9 +946,9 @@ export default function CustomerRequestScreen({ onClose }) {
                   <MaterialIcons name="pending-actions" size={20} color="#1f9c8b" />
                 </View>
                 <Text style={styles.statNumber}>{requests.length}</Text>
-                <Text style={styles.statLabel}>Pending Requests</Text>
+                <Text style={styles.statLabel}>{i18n.t("admin.customerRequests.overview.pendingRequests")}</Text>
                 <Text style={[styles.statTrend, requests.length > 0 && { color: '#1f9c8b' }]}>
-                  {requests.length > 0 ? 'Action Required' : 'All Clear'}
+                  {requests.length > 0 ? i18n.t("admin.customerRequests.overview.actionRequired") : i18n.t("admin.customerRequests.overview.allClear")}
                 </Text>
               </View>
 
@@ -897,8 +964,8 @@ export default function CustomerRequestScreen({ onClose }) {
                     return requestDate === today;
                   }).length}
                 </Text>
-                <Text style={styles.statLabel}>Today's Requests</Text>
-                <Text style={styles.statTrend}>New</Text>
+                <Text style={styles.statLabel}>{i18n.t("admin.customerRequests.overview.todayRequests")}</Text>
+                <Text style={styles.statTrend}>{i18n.t("admin.customerRequests.overview.new")}</Text>
               </View>
 
               <View style={styles.statCard}>
@@ -908,8 +975,8 @@ export default function CustomerRequestScreen({ onClose }) {
                 <Text style={styles.statNumber}>
                   {requests.filter(r => r.type === 'reschedule_request').length}
                 </Text>
-                <Text style={styles.statLabel}>Reschedule Requests</Text>
-                <Text style={styles.statTrend}>Priority</Text>
+                <Text style={styles.statLabel}>{i18n.t("admin.customerRequests.overview.rescheduleRequests")}</Text>
+                <Text style={styles.statTrend}>{i18n.t("admin.customerRequests.overview.priority")}</Text>
               </View>
             </View>
           </View>
@@ -919,20 +986,24 @@ export default function CustomerRequestScreen({ onClose }) {
             {requests.length === 0 ? (
               <View style={styles.emptyState}>
                 <MaterialIcons name="check-circle" size={64} color="#1f9c8b" />
-                <Text style={styles.emptyTitle}>No Pending Requests</Text>
+                <Text style={styles.emptyTitle}>{i18n.t("admin.customerRequests.emptyState.title")}</Text>
                 <Text style={styles.emptyText}>
-                  All customer requests have been processed
+                  {i18n.t("admin.customerRequests.emptyState.text")}
                 </Text>
                 <TouchableOpacity onPress={loadData} style={styles.primaryButton}>
                   <MaterialIcons name="refresh" size={18} color="#fff" />
-                  <Text style={styles.primaryButtonText}>Refresh</Text>
+                  <Text style={styles.primaryButtonText}>{i18n.t("admin.customerRequests.emptyState.refresh")}</Text>
                 </TouchableOpacity>
               </View>
             ) : (
               <>
                 <View style={styles.sectionHeader}>
                   <MaterialIcons name="list-alt" size={20} color="#2c3e50" />
-                  <Text style={styles.sectionTitle}>Pending Requests ({requests.length})</Text>
+                  <Text style={styles.sectionTitle}>
+                    {requests.length === 1
+                      ? i18n.t("admin.customerRequests.requestList.title_one", { count: requests.length })
+                      : i18n.t("admin.customerRequests.requestList.title_other", { count: requests.length })}
+                  </Text>
                 </View>
 
                 <View style={styles.requestsList}>
@@ -947,7 +1018,7 @@ export default function CustomerRequestScreen({ onClose }) {
                           <View style={styles.customerDetails}>
                             <Text style={styles.customerName}>{request.customer_name}</Text>
                             <Text style={styles.requestDate}>
-                              {request.created_at ? new Date(request.created_at).toLocaleDateString() : 'Unknown date'}
+                              {request.created_at ? new Date(request.created_at).toLocaleDateString() : i18n.t("admin.customerRequests.requestList.unknownDate")}
                             </Text>
                           </View>
                         </View>
@@ -975,10 +1046,10 @@ export default function CustomerRequestScreen({ onClose }) {
                           />
                           <Text style={styles.statusBadgeText}>
                             {request.type === 'password_recovery'
-                              ? 'PASSWORD'
+                              ? i18n.t("admin.customerRequests.requestList.passwordBadge")
                               : request.type === 'reschedule_request'
-                                ? 'RESCHEDULE'
-                                : 'SERVICE'}
+                                ? i18n.t("admin.customerRequests.requestList.rescheduleBadge")
+                                : i18n.t("admin.customerRequests.requestList.serviceBadge")}
                           </Text>
                         </View>
                       </View>
@@ -999,19 +1070,48 @@ export default function CustomerRequestScreen({ onClose }) {
                         <View style={styles.urgencyRow}>
                           <MaterialIcons name="priority-high" size={14} color={getUrgencyColor(request.urgency)} />
                           <Text style={[styles.urgencyText, { color: getUrgencyColor(request.urgency) }]}>
-                            {request.urgency?.toUpperCase() || 'NORMAL'} PRIORITY
+                            {i18n.t("admin.customerRequests.requestList.priority", { priority: getUrgencyLabel(request.urgency) })}
                           </Text>
                         </View>
 
                         <Text style={styles.description} numberOfLines={2}>
-                          {request.description || 'No description provided'}
+                          {request.description || i18n.t("admin.customerRequests.requestList.noDescription")}
                         </Text>
+
+                        {request.images && request.images.length > 0 && (
+                          <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            style={{ marginTop: 10 }}
+                          >
+                            {request.images.map((img, index) => (
+                              <TouchableOpacity
+                                key={index}
+                                onPress={() => openImageViewer(request.images, index)}
+                                activeOpacity={0.8}
+                              >
+                                <Image
+                                  source={{ uri: IMAGE_BASE + img }}
+                                  style={{
+                                    width: 70,
+                                    height: 70,
+                                    borderRadius: 8,
+                                    marginRight: 8,
+                                    borderWidth: 1,
+                                    borderColor: '#e9ecef'
+                                  }}
+                                  resizeMode="cover"
+                                />
+                              </TouchableOpacity>
+                            ))}
+                          </ScrollView>
+                        )}
 
                         {(request.preferred_date || request.preferred_time) && (
                           <View style={styles.preferredTime}>
                             <MaterialIcons name="schedule" size={14} color="#666" />
                             <Text style={styles.preferredTimeText}>
-                              Preferred: {formatDateTime(request.preferred_date, request.preferred_time)}
+                              {i18n.t("admin.customerRequests.requestList.preferred", { datetime: formatDateTime(request.preferred_date, request.preferred_time) })}
                             </Text>
                           </View>
                         )}
@@ -1023,17 +1123,17 @@ export default function CustomerRequestScreen({ onClose }) {
                           onPress={() => handleViewDetails(request)}
                         >
                           <MaterialIcons name="visibility" size={16} color="#1f9c8b" />
-                          <Text style={styles.detailsButtonText}>View Details</Text>
+                          <Text style={styles.detailsButtonText}>{i18n.t("admin.customerRequests.requestList.viewDetails")}</Text>
                         </TouchableOpacity>
                         
                         <View style={styles.actionButtons}>
                           <TouchableOpacity
                             style={styles.declineButton}
                             onPress={() => handleDecline(request)}
-                            disabled={processingDeclineId === request.id}
+                            disabled={processing}
                           >
                             <MaterialIcons name="close" size={16} color="#fff" />
-                            <Text style={styles.declineButtonText}>Decline</Text>
+                            <Text style={styles.declineButtonText}>{i18n.t("admin.customerRequests.requestList.decline")}</Text>
                           </TouchableOpacity>
                           
                           <TouchableOpacity
@@ -1042,7 +1142,7 @@ export default function CustomerRequestScreen({ onClose }) {
                             disabled={processing}
                           >
                             <MaterialIcons name="check" size={16} color="#fff" />
-                            <Text style={styles.primaryButtonText}>Accept</Text>
+                            <Text style={styles.primaryButtonText}>{i18n.t("admin.customerRequests.requestList.accept")}</Text>
                           </TouchableOpacity>
                         </View>
                       </View>
@@ -1055,12 +1155,12 @@ export default function CustomerRequestScreen({ onClose }) {
 
           {/* FOOTER */}
           <View style={styles.footer}>
-            <Text style={styles.footerText}>Customer Request Management System</Text>
+            <Text style={styles.footerText}>{i18n.t("admin.customerRequests.footer.system")}</Text>
             <Text style={styles.footerSubtext}>
-              Version 1.0 • Last updated: {new Date().toLocaleDateString()}
+              {i18n.t("admin.customerRequests.footer.version", { date: new Date().toLocaleDateString() })}
             </Text>
             <Text style={styles.footerCopyright}>
-              © {new Date().getFullYear()} Pest-Free. All rights reserved.
+              {i18n.t("admin.customerRequests.footer.copyright", { year: new Date().getFullYear() })}
             </Text>
           </View>
         </View>
@@ -1078,7 +1178,7 @@ export default function CustomerRequestScreen({ onClose }) {
             {selectedRequest ? (
               <>
                 <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>Request Details</Text>
+                  <Text style={styles.modalTitle}>{i18n.t("admin.customerRequests.detailsModal.title")}</Text>
                   <TouchableOpacity onPress={() => setShowDetailsModal(false)}>
                     <MaterialIcons name="close" size={24} color="#666" />
                   </TouchableOpacity>
@@ -1086,7 +1186,7 @@ export default function CustomerRequestScreen({ onClose }) {
                 
                 <ScrollView style={styles.modalContent}>
                   <View style={styles.detailSection}>
-                    <Text style={styles.detailLabel}>Customer</Text>
+                    <Text style={styles.detailLabel}>{i18n.t("admin.customerRequests.detailsModal.customer")}</Text>
                     <Text style={styles.detailValue}>{selectedRequest.customer_name}</Text>
                     {selectedRequest.customer_email && (
                       <Text style={styles.detailSubValue}>{selectedRequest.customer_email}</Text>
@@ -1094,62 +1194,98 @@ export default function CustomerRequestScreen({ onClose }) {
                   </View>
                   
                   <View style={styles.detailSection}>
-                    <Text style={styles.detailLabel}>Service Type</Text>
+                    <Text style={styles.detailLabel}>{i18n.t("admin.customerRequests.detailsModal.serviceType")}</Text>
                     <Text style={styles.detailValue}>
                       {getServiceTypeLabel(selectedRequest.service_type, selectedRequest.special_service_subtype)}
                     </Text>
                     {selectedRequest.other_pest_name && (
                       <Text style={styles.detailSubValue}>
-                        Pest: {selectedRequest.other_pest_name}
+                        {i18n.t("admin.customerRequests.detailsModal.pest", { name: selectedRequest.other_pest_name })}
                       </Text>
                     )}
                   </View>
                   
                   <View style={styles.detailSection}>
-                    <Text style={styles.detailLabel}>Urgency</Text>
+                    <Text style={styles.detailLabel}>{i18n.t("admin.customerRequests.detailsModal.urgency")}</Text>
                     <View style={[styles.urgencyDisplay, { backgroundColor: getUrgencyColor(selectedRequest.urgency) + '20' }]}>
                       <Text style={[styles.urgencyDisplayText, { color: getUrgencyColor(selectedRequest.urgency) }]}>
-                        {selectedRequest.urgency?.toUpperCase() || 'NORMAL'}
+                        {getUrgencyLabel(selectedRequest.urgency)}
                       </Text>
                     </View>
                   </View>
                   
                   <View style={styles.detailSection}>
-                    <Text style={styles.detailLabel}>Description</Text>
+                    <Text style={styles.detailLabel}>{i18n.t("admin.customerRequests.detailsModal.description")}</Text>
                     <Text style={styles.detailValue}>{selectedRequest.description}</Text>
                   </View>
+
+                  {selectedRequest.images && selectedRequest.images.length > 0 && (
+                    <View style={styles.detailSection}>
+                      <Text style={styles.detailLabel}>{i18n.t("admin.customerRequests.detailsModal.attachedImages")}</Text>
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        style={{ marginTop: 8 }}
+                      >
+                        {selectedRequest?.images?.map((img, index) => {
+                          const imagesArray = selectedRequest.images; // capture stable reference
+
+                          return (
+                            <TouchableOpacity
+                              key={index}
+                              onPress={() => openImageViewer(imagesArray, index)}
+                              activeOpacity={0.8}
+                            >
+                              <Image
+                                source={{ uri: IMAGE_BASE + img }}
+                                style={{
+                                  width: 70,
+                                  height: 70,
+                                  borderRadius: 8,
+                                  marginRight: 8,
+                                  borderWidth: 1,
+                                  borderColor: '#e9ecef'
+                                }}
+                                resizeMode="cover"
+                              />
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </ScrollView>
+                    </View>
+                  )}
                   
                   {selectedRequest.type === 'reschedule_request' && (
                     <View style={styles.detailSection}>
-                      <Text style={styles.detailLabel}>Reschedule Details</Text>
+                      <Text style={styles.detailLabel}>{i18n.t("admin.customerRequests.detailsModal.rescheduleDetails")}</Text>
                       <Text style={styles.detailValue}>
-                        Original: {formatDateTime(selectedRequest.original_date, selectedRequest.original_time)}
+                        {i18n.t("admin.customerRequests.detailsModal.original", { datetime: formatDateTime(selectedRequest.original_date, selectedRequest.original_time) })}
                       </Text>
                       <Text style={styles.detailValue}>
-                        Requested: {formatDateTime(selectedRequest.preferred_date, selectedRequest.preferred_time)}
+                        {i18n.t("admin.customerRequests.detailsModal.requested", { datetime: formatDateTime(selectedRequest.preferred_date, selectedRequest.preferred_time) })}
                       </Text>
                     </View>
                   )}
                   
                   <View style={styles.detailSection}>
-                    <Text style={styles.detailLabel}>Preferred Date & Time</Text>
+                    <Text style={styles.detailLabel}>{i18n.t("admin.customerRequests.detailsModal.preferredDateTime")}</Text>
                     <Text style={styles.detailValue}>
                       {selectedRequest.preferred_date 
                         ? formatDateTime(selectedRequest.preferred_date, selectedRequest.preferred_time)
-                        : 'Not specified'}
+                        : i18n.t("admin.customerRequests.detailsModal.notSpecified")}
                     </Text>
                   </View>
                   
                   <View style={styles.detailSection}>
-                    <Text style={styles.detailLabel}>Submitted</Text>
+                    <Text style={styles.detailLabel}>{i18n.t("admin.customerRequests.detailsModal.submitted")}</Text>
                     <Text style={styles.detailValue}>
-                      {selectedRequest.created_at ? new Date(selectedRequest.created_at).toLocaleString() : 'Unknown'}
+                      {selectedRequest.created_at ? new Date(selectedRequest.created_at).toLocaleString() : i18n.t("admin.customerRequests.requestList.unknownDate")}
                     </Text>
                   </View>
                   
                   {selectedRequest.notes && (
                     <View style={styles.detailSection}>
-                      <Text style={styles.detailLabel}>Additional Notes</Text>
+                      <Text style={styles.detailLabel}>{i18n.t("admin.customerRequests.detailsModal.additionalNotes")}</Text>
                       <Text style={styles.detailValue}>{selectedRequest.notes}</Text>
                     </View>
                   )}
@@ -1169,7 +1305,7 @@ export default function CustomerRequestScreen({ onClose }) {
                     ) : (
                       <>
                         <MaterialIcons name="close" size={18} color="#fff" />
-                        <Text style={styles.modalButtonText}>Decline Request</Text>
+                        <Text style={styles.modalButtonText}>{i18n.t("admin.customerRequests.detailsModal.declineRequest")}</Text>
                       </>
                     )}
                   </TouchableOpacity>
@@ -1189,10 +1325,10 @@ export default function CustomerRequestScreen({ onClose }) {
                         <MaterialIcons name="check" size={18} color="#fff" />
                         <Text style={styles.modalButtonText}>
                           {selectedRequest.type === 'password_recovery'
-                            ? 'Reset Password'
+                            ? i18n.t("admin.customerRequests.passwordModal.resetPassword") || 'Reset Password'
                             : selectedRequest.type === 'reschedule_request'
-                              ? 'Accept Reschedule'
-                              : 'Accept & Schedule'}
+                              ? i18n.t("admin.customerRequests.detailsModal.acceptReschedule") || 'Accept Reschedule'
+                              : i18n.t("admin.customerRequests.detailsModal.acceptAndSchedule") || 'Accept & Schedule'}
                         </Text>
                       </>
                     )}
@@ -1202,7 +1338,7 @@ export default function CustomerRequestScreen({ onClose }) {
             ) : (
               <View style={styles.loadingModalContent}>
                 <ActivityIndicator size="large" color="#1f9c8b" />
-                <Text style={styles.loadingText}>Loading request details...</Text>
+                <Text style={styles.loadingText}>{i18n.t("admin.customerRequests.loading")}</Text>
               </View>
             )}
           </View>
@@ -1228,8 +1364,8 @@ export default function CustomerRequestScreen({ onClose }) {
                 />
                 <Text style={styles.appointmentModalTitle}>
                   {selectedRequest?.type === 'reschedule_request' 
-                    ? 'Approve Reschedule Request' 
-                    : 'Schedule Appointment'}
+                    ? i18n.t("admin.customerRequests.appointmentModal.approveTitle")
+                    : i18n.t("admin.customerRequests.appointmentModal.title")}
                 </Text>
               </View>
               <TouchableOpacity 
@@ -1246,7 +1382,7 @@ export default function CustomerRequestScreen({ onClose }) {
                 showsVerticalScrollIndicator={true}
                 contentContainerStyle={styles.appointmentModalScrollContent}
               >
-                {/* CUSTOMER INFO */}
+                {/* Customer Info */}
                 <View style={styles.customerInfoHeader}>
                   <View style={styles.customerAvatar}>
                     <Text style={styles.customerAvatarText}>
@@ -1259,8 +1395,8 @@ export default function CustomerRequestScreen({ onClose }) {
                     </Text>
                     <Text style={styles.customerRequestType}>
                       {selectedRequest?.type === 'reschedule_request' 
-                        ? 'Reschedule Request' 
-                        : 'New Service Request'}
+                        ? i18n.t("admin.customerRequests.appointmentModal.rescheduleInfo")
+                        : i18n.t("admin.customerRequests.appointmentModal.customerInfo")}
                     </Text>
                   </View>
                 </View>
@@ -1268,7 +1404,7 @@ export default function CustomerRequestScreen({ onClose }) {
                 {/* SERVICE PRICE */}
                 <View style={styles.formGroup}>
                   <Text style={styles.formLabel}>
-                    Service Price (€) <Text style={styles.requiredStar}>*</Text>
+                    {i18n.t("admin.customerRequests.appointmentModal.servicePrice")} <Text style={styles.requiredStar}>*</Text>
                   </Text>
                   <View style={styles.inputWithIcon}>
                     <MaterialIcons name="euro" size={20} color="#666" style={styles.inputIcon} />
@@ -1286,7 +1422,7 @@ export default function CustomerRequestScreen({ onClose }) {
                 {/* APPOINTMENT CATEGORY */}
                 <View style={styles.formGroup}>
                   <Text style={styles.formLabel}>
-                    Appointment Category <Text style={styles.requiredStar}>*</Text>
+                    {i18n.t("admin.customerRequests.appointmentModal.appointmentCategory")} <Text style={styles.requiredStar}>*</Text>
                   </Text>
                   <TouchableOpacity
                     style={styles.formDropdown}
@@ -1296,7 +1432,7 @@ export default function CustomerRequestScreen({ onClose }) {
                     <View style={styles.dropdownContent}>
                       <MaterialIcons name="category" size={20} color="#666" />
                       <Text style={styles.dropdownText}>
-                        {APPOINTMENT_CATEGORIES.find(c => c.id === appointmentCategory)?.label || 'Select Category'}
+                        {APPOINTMENT_CATEGORIES.find(c => c.id === appointmentCategory)?.label || i18n.t("admin.schedule.modals.selectCategory")}
                       </Text>
                     </View>
                     <MaterialIcons 
@@ -1344,80 +1480,29 @@ export default function CustomerRequestScreen({ onClose }) {
                 {/* COMPLIANCE - Required for Myocide, Optional for others */}
                 <View style={styles.formGroup}>
                   <Text style={styles.formLabel}>
-                    Compliance Valid Until {selectedRequest?.service_type === 'myocide' && <Text style={styles.requiredStar}>*</Text>}
+                    {i18n.t("admin.customerRequests.appointmentModal.complianceValidUntil")} {selectedRequest?.service_type === 'myocide' && <Text style={styles.requiredStar}>*</Text>}
                   </Text>
-                  
-                  {/* Compliance Date Button */}
-                  <TouchableOpacity
-                    style={styles.dateTimeButton}
-                    onPress={() => setShowCompliancePicker(true)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.dateTimeButtonContent}>
-                      <View style={[styles.dateTimeIcon, { backgroundColor: 'rgba(31, 156, 139, 0.1)' }]}>
-                        <MaterialIcons name="event-available" size={20} color="#1f9c8b" />
-                      </View>
-                      <View style={styles.dateTimeTextContainer}>
-                        <Text style={styles.dateTimeLabel}>Valid Until</Text>
-                        <Text style={styles.dateTimeValue}>
-                          {complianceValidUntil || "Select compliance date"}
-                        </Text>
-                      </View>
-                      <MaterialIcons name="calendar-today" size={20} color="#666" />
-                    </View>
-                  </TouchableOpacity>
-
-                  {/* COMPLIANCE PICKER - Mobile */}
-                  {showCompliancePicker && !isWeb && (
-                    <View style={styles.timePickerContainer}>
-                      <DateTimePicker
-                        value={complianceValidUntil ? new Date(complianceValidUntil) : new Date()}
-                        mode="date"
-                        display={Platform.OS === "ios" ? "spinner" : "default"}
-                        onChange={(event, date) => {
-                          setShowCompliancePicker(false);
-                          if (date) setComplianceValidUntil(toISODate(date));
-                        }}
-                        style={styles.datePicker}
-                      />
-                    </View>
-                  )}
-
-                  {/* COMPLIANCE PICKER - Web */}
-                  {showCompliancePicker && isWeb && (
-                    <View style={styles.timePickerContainer}>
-                      <View style={styles.webDatePickerContainer}>
-                        <Text style={styles.detailsLabel}>Select Compliance Valid Until Date</Text>
-                        <DatePicker
-                          selected={complianceValidUntil ? new Date(complianceValidUntil) : new Date()}
-                          onChange={(date) => {
-                            setComplianceValidUntil(toISODate(date));
-                            setShowCompliancePicker(false);
-                          }}
-                          inline
-                          calendarClassName="custom-calendar"
-                        />
-                        <TouchableOpacity
-                          style={styles.timeDoneButton}
-                          onPress={() => setShowCompliancePicker(false)}
-                        >
-                          <Text style={styles.timeDoneButtonText}>Done</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  )}
-                  
+                  <View style={styles.inputWithIcon}>
+                    <MaterialIcons name="verified" size={20} color="#666" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.formInput}
+                      placeholder={selectedRequest?.service_type === 'myocide' ? i18n.t("admin.customerRequests.appointmentModal.complianceRequired") : i18n.t("admin.customerRequests.appointmentModal.complianceOptional")}
+                      value={complianceValidUntil}
+                      onChangeText={setComplianceValidUntil}
+                      placeholderTextColor="#999"
+                    />
+                  </View>
                   <Text style={styles.helpText}>
                     {selectedRequest?.service_type === 'myocide' 
-                      ? 'Required for Myocide service compliance certificate' 
-                      : 'Optional: Only needed if this service affects compliance'}
+                      ? i18n.t("admin.schedule.compliance.requiredForMyocide")
+                      : i18n.t("admin.customerRequests.appointmentModal.complianceOptionalDesc")}
                   </Text>
                 </View>
 
                 {/* SERVICE TYPE DISPLAY - For reschedule requests */}
                 {selectedRequest.type === 'reschedule_request' ? (
                   <View style={styles.formGroup}>
-                    <Text style={styles.formLabel}>Service Type</Text>
+                    <Text style={styles.formLabel}>{i18n.t("admin.customerRequests.appointmentModal.serviceType")}</Text>
                     <View style={styles.currentServiceDisplay}>
                       <MaterialIcons name="star" size={18} color="#1f9c8b" />
                       <Text style={styles.currentServiceText}>
@@ -1430,19 +1515,19 @@ export default function CustomerRequestScreen({ onClose }) {
                     </View>
                   </View>
                 ) : (
-                  
+                  /* SERVICE TYPE SELECTION - Only for NEW service requests */
                   <View style={styles.formGroup}>
-                    <Text style={styles.formLabel}>Service Type</Text>
+                    <Text style={styles.formLabel}>{i18n.t("admin.customerRequests.appointmentModal.serviceType")}</Text>
                     
                     {/* Display current service type */}
                     <View style={styles.currentServiceDisplay}>
                       <MaterialIcons name="star" size={18} color="#1f9c8b" />
                       <Text style={styles.currentServiceText}>
-                        Current: {getServiceTypeLabel(
+                        {i18n.t("admin.customerRequests.appointmentModal.currentService", { type: getServiceTypeLabel(
                           selectedRequest?.service_type,
                           selectedRequest?.special_service_subtype,
                           selectedRequest?.other_pest_name
-                        )}
+                        ) })}
                       </Text>
                     </View>
                     
@@ -1455,7 +1540,7 @@ export default function CustomerRequestScreen({ onClose }) {
                       <View style={styles.dropdownContent}>
                         <MaterialIcons name="build" size={20} color="#666" />
                         <Text style={styles.dropdownText}>
-                          {serviceTypes.find(s => s.id === serviceType)?.label || 'Change Service Type'}
+                          {serviceTypes.find(s => s.id === serviceType)?.label || i18n.t("admin.customerRequests.appointmentModal.changeServiceType")}
                         </Text>
                       </View>
                       <MaterialIcons 
@@ -1518,7 +1603,7 @@ export default function CustomerRequestScreen({ onClose }) {
                 {/* SPECIAL SERVICE SUBTYPE - Only for NEW service requests with special type */}
                 {selectedRequest.type !== 'reschedule_request' && serviceType === 'special' && (
                   <View style={styles.formGroup}>
-                    <Text style={styles.formLabel}>Specific Service Type <Text style={styles.requiredStar}>*</Text></Text>
+                    <Text style={styles.formLabel}>{i18n.t("admin.customerRequests.appointmentModal.specificServiceType")} <Text style={styles.requiredStar}>*</Text></Text>
                     <TouchableOpacity
                       style={styles.formDropdown}
                       onPress={() => setShowSpecialSubtypeDropdown(!showSpecialSubtypeDropdown)}
@@ -1529,7 +1614,7 @@ export default function CustomerRequestScreen({ onClose }) {
                         <Text style={styles.dropdownText}>
                           {specialServiceSubtype 
                             ? specialServiceSubtypes.find(s => s.id === specialServiceSubtype)?.label
-                            : 'Select specific service type'}
+                            : i18n.t("admin.schedule.specialSubtypes.selectType")}
                         </Text>
                       </View>
                       <MaterialIcons 
@@ -1584,11 +1669,11 @@ export default function CustomerRequestScreen({ onClose }) {
                     {/* Other Pest Name Input */}
                     {specialServiceSubtype === "other" && (
                       <View style={[styles.formGroup, { marginTop: 12 }]}>
-                        <Text style={styles.formLabel}>Specify Pest Name <Text style={styles.requiredStar}>*</Text></Text>
+                        <Text style={styles.formLabel}>{i18n.t("admin.schedule.specialSubtypes.specifyPest")} <Text style={styles.requiredStar}>*</Text></Text>
                         <View style={styles.borderedInputContainer}>
                           <TextInput
                             style={styles.formInput}
-                            placeholder="e.g., Ants, Spiders, Cockroaches, etc."
+                            placeholder={i18n.t("admin.schedule.specialSubtypes.pestPlaceholder")}
                             placeholderTextColor="#999"
                             value={otherPestName}
                             onChangeText={setOtherPestName}
@@ -1603,10 +1688,10 @@ export default function CustomerRequestScreen({ onClose }) {
                 {/* TREATMENT DETAILS SECTIONS - REMOVED for reschedule requests */}
                 {selectedRequest.type !== 'reschedule_request' && serviceType === 'insecticide' && (
                   <View style={styles.formGroup}>
-                    <Text style={styles.formLabel}>Treatment Details <Text style={styles.requiredStar}>*</Text></Text>
+                    <Text style={styles.formLabel}>{i18n.t("admin.schedule.treatmentDetails.title")} <Text style={styles.requiredStar}>*</Text></Text>
                     <TextInput
                       style={styles.formTextArea}
-                      placeholder="Describe the insecticide requirements..."
+                      placeholder={i18n.t("admin.schedule.treatmentDetails.insecticidePlaceholder")}
                       placeholderTextColor="#999"
                       value={insecticideDetails}
                       onChangeText={setInsecticideDetails}
@@ -1619,10 +1704,10 @@ export default function CustomerRequestScreen({ onClose }) {
 
                 {selectedRequest.type !== 'reschedule_request' && serviceType === 'disinfection' && (
                   <View style={styles.formGroup}>
-                    <Text style={styles.formLabel}>Treatment Details <Text style={styles.requiredStar}>*</Text></Text>
+                    <Text style={styles.formLabel}>{i18n.t("admin.schedule.treatmentDetails.title")} <Text style={styles.requiredStar}>*</Text></Text>
                     <TextInput
                       style={styles.formTextArea}
-                      placeholder="Describe the disinfection requirements..."
+                      placeholder={i18n.t("admin.schedule.treatmentDetails.disinfectionPlaceholder")}
                       placeholderTextColor="#999"
                       value={disinfectionDetails}
                       onChangeText={setDisinfectionDetails}
@@ -1636,13 +1721,13 @@ export default function CustomerRequestScreen({ onClose }) {
                 {/* TECHNICIAN SELECTION */}
                 <View style={styles.formGroup}>
                   <Text style={styles.formLabel}>
-                    Technician <Text style={styles.requiredStar}>*</Text>
+                    {i18n.t("admin.customerRequests.appointmentModal.technician")} <Text style={styles.requiredStar}>*</Text>
                   </Text>
                   {technicians.length === 0 ? (
                     <View style={styles.noTechniciansContainer}>
                       <MaterialIcons name="warning" size={20} color="#F44336" />
                       <Text style={styles.noTechniciansText}>
-                        No technicians available. Please add technicians first.
+                        {i18n.t("admin.customerRequests.appointmentModal.noTechnicians")}
                       </Text>
                     </View>
                   ) : (
@@ -1689,7 +1774,7 @@ export default function CustomerRequestScreen({ onClose }) {
                                 appointmentData.technicianId === techId && 
                                 styles.technicianNameSelected
                               ]} numberOfLines={1}>
-                                {techName || tech.username || 'Unknown'}
+                                {techName || tech.username || i18n.t("admin.schedule.technician.unknown") || 'Unknown'}
                               </Text>
                             </View>
                           </TouchableOpacity>
@@ -1699,14 +1784,14 @@ export default function CustomerRequestScreen({ onClose }) {
                   )}
                 </View>
                 
-                {/* DATE SELECTION */}
+                                {/* DATE SELECTION - iOS-like behavior */}
                 <View style={styles.formGroup}>
                   <Text style={styles.formLabel}>
-                    Date <Text style={styles.requiredStar}>*</Text>
+                    {i18n.t("admin.customerRequests.appointmentModal.date")} <Text style={styles.requiredStar}>*</Text>
                   </Text>
                   <TouchableOpacity
                     style={styles.dateTimeButton}
-                    onPress={() => setShowDatePicker(true)}
+                    onPress={() => setShowDatePicker(!showDatePicker)}
                     activeOpacity={0.7}
                   >
                     <View style={styles.dateTimeButtonContent}>
@@ -1714,63 +1799,62 @@ export default function CustomerRequestScreen({ onClose }) {
                         <MaterialIcons name="event" size={20} color="#1f9c8b" />
                       </View>
                       <View style={styles.dateTimeTextContainer}>
-                        <Text style={styles.dateTimeLabel}>Appointment Date</Text>
+                        <Text style={styles.dateTimeLabel}>{i18n.t("admin.schedule.dateTime.appointmentDate")}</Text>
                         <Text style={styles.dateTimeValue}>
-                          {formatDateOnly(appointmentData.date) || 'Select date'}
+                          {formatDateOnly(appointmentData.date) || i18n.t("admin.schedule.dateTime.selectDate")}
                         </Text>
                       </View>
-                      <MaterialIcons name="calendar-today" size={20} color="#666" />
+                      <MaterialIcons name={showDatePicker ? "expand-less" : "expand-more"} size={20} color="#666" />
                     </View>
                   </TouchableOpacity>
                   
-                  {/* DATE PICKER - Mobile */}
-                  {showDatePicker && !isWeb && (
-                    <DateTimePicker
-                      value={appointmentDate}
-                      mode="date"
-                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                      minimumDate={new Date()}
-                      onChange={handleDateChange}
-                      style={styles.datePicker}
-                    />
-                  )}
-
-                  {/* DATE PICKER - Web */}
-                  {showDatePicker && isWeb && (
-                    <View style={styles.timePickerContainer}>
-                      <View style={styles.webDatePickerContainer}>
-                        <Text style={styles.detailsLabel}>Select Date</Text>
-                        <DatePicker
-                          selected={appointmentDate}
-                          onChange={(date) => {
-                            setAppointmentDate(date);
-                            const formattedDate = date.toISOString().split('T')[0];
-                            setAppointmentData(prev => ({ ...prev, date: formattedDate }));
+                  {showDatePicker && (
+                    <View style={styles.pickerContainer}>
+                      {Platform.OS === 'web' ? (
+                        <input
+                          type="date"
+                          value={appointmentData.date || new Date().toISOString().split('T')[0]}
+                          min={new Date().toISOString().split('T')[0]}
+                          onChange={(e) => {
+                            const newDate = e.target.value;
+                            if (newDate) {
+                              setAppointmentDate(new Date(newDate));
+                              setAppointmentData(prev => ({ ...prev, date: newDate }));
+                            }
                             setShowDatePicker(false);
                           }}
-                          inline
-                          calendarClassName="custom-calendar"
-                          minDate={new Date()}
+                          style={styles.webDateInput}
+                          autoFocus
                         />
-                        <TouchableOpacity
-                          style={styles.timeDoneButton}
-                          onPress={() => setShowDatePicker(false)}
-                        >
-                          <Text style={styles.timeDoneButtonText}>Done</Text>
-                        </TouchableOpacity>
-                      </View>
+                      ) : (
+                        <DateTimePicker
+                          value={appointmentDate}
+                          mode="date"
+                          display="spinner"
+                          minimumDate={new Date()}
+                          onChange={(event, selectedDate) => {
+                            setShowDatePicker(false);
+                            if (selectedDate) {
+                              setAppointmentDate(selectedDate);
+                              const formattedDate = selectedDate.toISOString().split('T')[0];
+                              setAppointmentData(prev => ({ ...prev, date: formattedDate }));
+                            }
+                          }}
+                          style={styles.datePicker}
+                        />
+                      )}
                     </View>
                   )}
                 </View>
 
-                {/* TIME SELECTION */}
+                {/* TIME SELECTION - Web-only 24-hour format */}
                 <View style={styles.formGroup}>
                   <Text style={styles.formLabel}>
-                    Time <Text style={styles.requiredStar}>*</Text>
+                    {i18n.t("admin.customerRequests.appointmentModal.time")} <Text style={styles.requiredStar}>*</Text>
                   </Text>
                   <TouchableOpacity
                     style={styles.dateTimeButton}
-                    onPress={() => setShowTimePicker(true)}
+                    onPress={() => setShowTimePicker(!showTimePicker)}
                     activeOpacity={0.7}
                   >
                     <View style={styles.dateTimeButtonContent}>
@@ -1778,60 +1862,39 @@ export default function CustomerRequestScreen({ onClose }) {
                         <MaterialIcons name="access-time" size={20} color="#1f9c8b" />
                       </View>
                       <View style={styles.dateTimeTextContainer}>
-                        <Text style={styles.dateTimeLabel}>Appointment Time</Text>
+                        <Text style={styles.dateTimeLabel}>{i18n.t("admin.schedule.dateTime.appointmentTime")}</Text>
                         <Text style={styles.dateTimeValue}>
-                          {appointmentData.time ? formatTime(appointmentData.time) : 'Select time'}
+                          {appointmentData.time ? appointmentData.time : i18n.t("admin.schedule.dateTime.selectTime")}
                         </Text>
                       </View>
-                      <MaterialIcons name="schedule" size={20} color="#666" />
+                      <MaterialIcons name={showTimePicker ? "expand-less" : "expand-more"} size={20} color="#666" />
                     </View>
                   </TouchableOpacity>
                   
-                  {/* TIME PICKER - Mobile */}
-                  {showTimePicker && !isWeb && (
-                    <DateTimePicker
-                      value={appointmentTime}
-                      mode="time"
-                      display="spinner"
-                      is24Hour={true}
-                      minuteInterval={5}
-                      onChange={handleTimeChange}
-                      style={styles.datePicker}
-                    />
-                  )}
-
-                  {/* TIME PICKER - Web */}
-                  {showTimePicker && isWeb && (
-                    <View style={styles.timePickerContainer}>
-                      <View style={styles.webTimePickerContainer}>
-                        <Text style={styles.detailsLabel}>Select Time</Text>
-                        <input
-                          type="time"
-                          value={appointmentData.time || ''}
-                          onChange={(e) => {
-                            setAppointmentData(prev => ({ ...prev, time: e.target.value }));
-                            setShowTimePicker(false);
-                          }}
-                          step="300"
-                          style={{
-                            width: '100%',
-                            padding: '12px',
-                            fontSize: '16px',
-                            borderRadius: '8px',
-                            border: '1px solid #e9ecef',
-                            backgroundColor: '#fff',
-                            marginBottom: '10px',
-                            fontFamily: 'System',
-                            outline: 'none',
-                          }}
-                        />
-                        <TouchableOpacity
-                          style={styles.timeDoneButton}
-                          onPress={() => setShowTimePicker(false)}
-                        >
-                          <Text style={styles.timeDoneButtonText}>Done</Text>
-                        </TouchableOpacity>
-                      </View>
+                  {showTimePicker && (
+                    <View style={styles.pickerContainer}>
+                      {/* FOR WEB: Always use HTML5 time input (24-hour format by default) */}
+                      <input
+                        type="time"
+                        value={appointmentData.time || '09:00'}
+                        onChange={(e) => {
+                          const newTime = e.target.value;
+                          if (newTime) {
+                            // Store directly in HH:MM format
+                            setAppointmentData(prev => ({ ...prev, time: newTime }));
+                            
+                            // Update the Date object for consistency
+                            const [hours, minutes] = newTime.split(':');
+                            const newDate = new Date();
+                            newDate.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
+                            setAppointmentTime(newDate);
+                          }
+                          setShowTimePicker(false);
+                        }}
+                        style={styles.webTimeInput}
+                        step="300"
+                        autoFocus
+                      />
                     </View>
                   )}
                 </View>
@@ -1841,14 +1904,14 @@ export default function CustomerRequestScreen({ onClose }) {
                   <View style={styles.preferencesCard}>
                     <View style={styles.preferencesHeader}>
                       <MaterialIcons name="thumb-up" size={18} color="#1f9c8b" />
-                      <Text style={styles.preferencesTitle}>Customer Preferences</Text>
+                      <Text style={styles.preferencesTitle}>{i18n.t("admin.customerRequests.appointmentModal.customerPreferences")}</Text>
                     </View>
                     <View style={styles.preferencesContent}>
                       {selectedRequest?.preferred_date && (
                         <View style={styles.preferenceItem}>
                           <MaterialIcons name="calendar-today" size={16} color="#666" />
                           <Text style={styles.preferenceText}>
-                            Preferred date: {formatDate(selectedRequest.preferred_date)}
+                            {i18n.t("admin.customerRequests.appointmentModal.preferredDate", { date: formatDate(selectedRequest.preferred_date) })}
                           </Text>
                         </View>
                       )}
@@ -1856,7 +1919,7 @@ export default function CustomerRequestScreen({ onClose }) {
                         <View style={styles.preferenceItem}>
                           <MaterialIcons name="schedule" size={16} color="#666" />
                           <Text style={styles.preferenceText}>
-                            Preferred time: {formatTime(selectedRequest.preferred_time)}
+                            {i18n.t("admin.customerRequests.appointmentModal.preferredTime", { time: formatTime(selectedRequest.preferred_time) })}
                           </Text>
                         </View>
                       )}
@@ -1868,7 +1931,7 @@ export default function CustomerRequestScreen({ onClose }) {
                   <View style={styles.notesCard}>
                     <View style={styles.notesHeader}>
                       <MaterialIcons name="notes" size={18} color="#666" />
-                      <Text style={styles.notesTitle}>Customer Notes</Text>
+                      <Text style={styles.notesTitle}>{i18n.t("admin.customerRequests.appointmentModal.customerNotes")}</Text>
                     </View>
                     <Text style={styles.notesText}>
                       {selectedRequest.notes}
@@ -1879,7 +1942,7 @@ export default function CustomerRequestScreen({ onClose }) {
             ) : (
               <View style={styles.loadingModalContent}>
                 <ActivityIndicator size="large" color="#1f9c8b" />
-                <Text style={styles.loadingText}>Loading request details...</Text>
+                <Text style={styles.loadingText}>{i18n.t("admin.customerRequests.loading")}</Text>
               </View>
             )}
             
@@ -1890,7 +1953,7 @@ export default function CustomerRequestScreen({ onClose }) {
                 disabled={processing}
                 activeOpacity={0.7}
               >
-                <Text style={styles.cancelActionButtonText}>Cancel</Text>
+                <Text style={styles.cancelActionButtonText}>{i18n.t("admin.customerRequests.appointmentModal.cancel")}</Text>
               </TouchableOpacity>
               
               <TouchableOpacity
@@ -1907,24 +1970,24 @@ export default function CustomerRequestScreen({ onClose }) {
                   if (selectedRequest.type === 'reschedule_request') {
                     // For reschedule requests, use the simpler validation
                     if (selectedRequest.service_type === 'myocide' && !complianceValidUntil) {
-                      Alert.alert("Error", "Compliance Valid Until is required for Myocide services");
+                      showAlert(i18n.t("common.error"), i18n.t("admin.customerRequests.appointmentModal.complianceRequired"));
                       return;
                     }
                     approveReschedule();
                   } else {
                     // For new service requests, validate all fields
                     if (serviceType === 'myocide' && !complianceValidUntil) {
-                      Alert.alert("Error", "Compliance Valid Until is required for Myocide services");
+                      showAlert(i18n.t("common.error"), i18n.t("admin.customerRequests.appointmentModal.complianceRequired"));
                       return;
                     }
                     
                     if (serviceType === 'special' && !specialServiceSubtype) {
-                      Alert.alert("Error", "Please select a specific service type for Special Service");
+                      showAlert(i18n.t("common.error"), i18n.t("admin.customerRequests.appointmentModal.specialRequired"));
                       return;
                     }
                     
                     if (serviceType === 'special' && specialServiceSubtype === 'other' && !otherPestName.trim()) {
-                      Alert.alert("Error", "Please type the name of the pest for 'Other' service");
+                      showAlert(i18n.t("common.error"), i18n.t("admin.customerRequests.appointmentModal.otherPestRequired"));
                       return;
                     }
                     
@@ -1941,8 +2004,8 @@ export default function CustomerRequestScreen({ onClose }) {
                     <MaterialIcons name="schedule" size={18} color="#fff" />
                     <Text style={styles.primaryActionButtonText}>
                       {selectedRequest?.type === "reschedule_request" 
-                        ? 'Approve Reschedule' 
-                        : 'Create Appointment'}
+                        ? i18n.t("admin.customerRequests.appointmentModal.approveReschedule")
+                        : i18n.t("admin.customerRequests.appointmentModal.createAppointment")}
                     </Text>
                   </>
                 )}
@@ -1960,26 +2023,26 @@ export default function CustomerRequestScreen({ onClose }) {
             {/* Header */}
             <View style={styles.passwordHeader}>
               <MaterialIcons name="lock-reset" size={28} color="#1f9c8b" />
-              <Text style={styles.passwordTitle}>Reset Customer Password</Text>
+              <Text style={styles.passwordTitle}>{i18n.t("admin.customerRequests.passwordModal.title")}</Text>
               <Text style={styles.passwordSubtitle}>
-                Set a new password for this customer account
+                {i18n.t("admin.customerRequests.passwordModal.subtitle")}
               </Text>
             </View>
 
             {/* Form */}
             <View style={styles.passwordForm}>
-              <Text style={styles.inputLabel}>New Password</Text>
+              <Text style={styles.inputLabel}>{i18n.t("admin.customerRequests.passwordModal.newPassword")}</Text>
               <TextInput
-                placeholder="Enter new password"
+                placeholder={i18n.t("admin.customerRequests.passwordModal.newPasswordPlaceholder") || "Enter new password"}
                 secureTextEntry
                 style={styles.passwordInput}
                 value={newPassword}
                 onChangeText={setNewPassword}
               />
 
-              <Text style={styles.inputLabel}>Confirm Password</Text>
+              <Text style={styles.inputLabel}>{i18n.t("admin.customerRequests.passwordModal.confirmPassword")}</Text>
               <TextInput
-                placeholder="Re-enter new password"
+                placeholder={i18n.t("admin.customerRequests.passwordModal.confirmPasswordPlaceholder") || "Re-enter new password"}
                 secureTextEntry
                 style={styles.passwordInput}
                 value={verifyPassword}
@@ -1993,7 +2056,7 @@ export default function CustomerRequestScreen({ onClose }) {
                 style={[styles.modalButton, styles.cancelButton]} 
                 onPress={() => setShowPasswordResetModal(false)}
               >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
+                <Text style={styles.cancelButtonText}>{i18n.t("common.cancel")}</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -2005,10 +2068,48 @@ export default function CustomerRequestScreen({ onClose }) {
                 onPress={submitPasswordReset}
                 disabled={!newPassword || !verifyPassword}
               >
-                <Text style={styles.modalButtonText}>Update Password</Text> 
+                <Text style={styles.modalButtonText}>{i18n.t("admin.customerRequests.passwordModal.updatePassword")}</Text> 
               </TouchableOpacity>
             </View>
           </View>
+        </View>
+      </Modal>
+      <Modal
+        visible={isImageViewerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsImageViewerVisible(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.9)",
+            justifyContent: "center",
+            alignItems: "center"
+          }}
+        >
+          <TouchableOpacity
+            style={{
+              position: "absolute",
+              top: 40,
+              right: 40,
+              zIndex: 10
+            }}
+            onPress={() => setIsImageViewerVisible(false)}
+          >
+            <MaterialIcons name="close" size={32} color="#fff" />
+          </TouchableOpacity>
+
+          {viewerImages.length > 0 && (
+            <Image
+              source={{ uri: viewerImages[viewerIndex].uri }}
+              style={{
+                width: "90%",
+                height: "80%",
+                resizeMode: "contain"
+              }}
+            />
+          )}
         </View>
       </Modal>
     </SafeAreaView>
@@ -2120,11 +2221,9 @@ const styles = StyleSheet.create({
     fontFamily: 'System',
   },
   logo: {
-    width: 360,
-    height: 150,
-    marginRight: 10,
-    marginLeft: -80, 
-    marginBottom: -10,
+    width: 120,
+    height: 50,
+    marginRight: 10, 
   },
   contentContainer: {
     flex: 1,
@@ -3151,50 +3250,52 @@ const styles = StyleSheet.create({
     paddingVertical: 0, // Let the input handle its own padding
     overflow: "hidden",
   },
-  webDatePickerContainer: {
-    padding: 16,
-    width: '100%',
-    alignItems: 'center',
-  },
-  webTimePickerContainer: {
-    padding: 16,
-    width: '100%',
-  },
-  timePickerContainer: {
+   pickerContainer: {
     backgroundColor: '#fff',
-    marginTop: 10,
-    borderRadius: 10,
-    padding: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
+    marginTop: 5,
+    marginBottom: 10,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: '#e9ecef',
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
-  },
-  timeDoneButton: {
-    backgroundColor: '#1f9c8b',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 16,
     width: '100%',
+    alignSelf: 'center',
   },
-  timeDoneButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
+
+  webDateInput: {
+    width: '100%',
+    padding: Platform.OS === 'web' ? '12px' : 12,
+    borderRadius: '8px',
+    border: 'none',
+    fontSize: '16px',
+    fontFamily: 'inherit',
+    backgroundColor: '#fff',
+    outline: 'none',
+    cursor: 'pointer',
+    boxSizing: 'border-box',
+    WebkitAppearance: 'none',
+    MozAppearance: 'none',
+    appearance: 'none',
   },
-  detailsLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 8,
-    fontFamily: 'System',
+
+  webTimeInput: {
+    width: '100%',
+    padding: Platform.OS === 'web' ? '12px' : 12,
+    borderRadius: '8px',
+    border: 'none',
+    fontSize: '16px',
+    fontFamily: 'inherit',
+    backgroundColor: '#fff',
+    outline: 'none',
+    cursor: 'pointer',
+    boxSizing: 'border-box',
+    WebkitAppearance: 'none',
+    MozAppearance: 'none',
+    appearance: 'none',
   },
 });
