@@ -1,3 +1,4 @@
+//i18n.js
 import en from '../locales/en.json';
 import gr from '../locales/gr.json';
 
