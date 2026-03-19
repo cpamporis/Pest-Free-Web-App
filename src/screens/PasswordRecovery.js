@@ -41,7 +41,7 @@ export default function PasswordRecovery({ onBack, onDone }) {
             }
           }
         } else {
-          // Simple alert with just an OK button
+          
           window.alert(`${title}\n\n${message}`);
           if (buttons[0]?.onPress) {
             buttons[0].onPress();
