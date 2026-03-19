@@ -225,7 +225,6 @@ export default function CustomerVisitsScreen({
         (downloadProgress) => {
           // You can track progress here if needed
           const progress = downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite;
-          console.log(`Download progress: ${Math.round(progress * 100)}%`);
         }
       );
 

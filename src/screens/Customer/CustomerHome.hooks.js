@@ -504,9 +504,6 @@ export default function useCustomerHome({ customer, onLogout, onViewVisits }) {
             }
           }
 
-          // Log formData contents for debugging
-          console.log("📸 Sending FormData with fields:", Object.fromEntries(formData._parts || []));
-          
           result = await apiService.submitCustomerRequest(formData, true);
         } else {
           result = await apiService.submitCustomerRequest(requestData);

@@ -962,8 +962,6 @@ const handleSaveAll = async () => {
 
     const uri = buildImageUrl(selectedMap.image);
 
-    console.log("🌐 Image URL:", uri); // DEBUG
-
     setCurrentImageUri(uri);
     setImageError(false);
   }, [selectedMap]);
@@ -1661,8 +1659,6 @@ const handleSaveAll = async () => {
                           resizeMode="contain"
                           onLayout={(e) => {
                             const { width, height } = e.nativeEvent.layout;
-
-                            console.log("📐 RN Image size:", width, height);
 
                             setImageLayout({ width, height });
                           }}
