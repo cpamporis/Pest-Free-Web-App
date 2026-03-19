@@ -2988,7 +2988,7 @@ const styles = StyleSheet.create({
   distributionLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 7, // INCREASED from 2 to 3 for more text space
+    flex: 7, 
     marginRight: 8,
   },
   distributionIcon: {
