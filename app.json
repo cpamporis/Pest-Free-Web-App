@@ -3,10 +3,11 @@
     "name": "Pestify",
     "slug": "snack-afcf5c09-a1e0-4fe9-8bfa-23c265329215",
     "version": "1.0.0",
+    "jsEngine": "jsc",              
+    "newArchEnabled": false,
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
