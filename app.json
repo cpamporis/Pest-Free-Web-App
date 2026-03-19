@@ -34,9 +34,6 @@
         "WRITE_EXTERNAL_STORAGE"
       ]
     },
-    "experiments": {
-        "baseUrl": "/"
-      },
     "web": {
       "bundler": "metro",
       "output": "static",
