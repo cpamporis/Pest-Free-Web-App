@@ -483,6 +483,10 @@
           "avgConsumption": "Μέση Κατανάλωση",
           "times": "φορές"
         },
+        "footer": "{{count}} σταθμοί",
+        "footer_plural": "{{count}} σταθμοί",
+        "sortedByStation": " • Ταξινόμηση ανά σταθμό",
+        "sortBadge": "Ταξινόμηση με αύξουσα ID",
         "months": {
           "jan": "Ιαν",
           "feb": "Φεβ",

@@ -488,7 +488,11 @@
           "fullConsumption": "100% Consumption",
           "avgConsumption": "Avg Consumption",
           "times": "times"
-        }
+        },
+        "footer": "{{count}} stations",
+        "footer_plural": "{{count}} stations",
+        "sortedByStation": " • Sorted by station",
+        "sortBadge": "Sorted by increasing ID"
       },
       "months": {
         "jan": "Jan",

@@ -705,7 +705,7 @@ export default function CustomerProfile({ customer, onClose}) {
       <View style={styles.chartCard}>
         <View style={styles.chartHeader}>
           <Text style={styles.chartTitle}>{title}</Text>
-          <Text style={styles.chartSortBadge}>Sorted: Low to High</Text>
+          <Text style={styles.chartSortBadge}>{i18n.t("admin.customerProfile.charts.sortBadge")}</Text>
         </View>
         
         {/* Scrollable chart container */}
@@ -805,7 +805,9 @@ export default function CustomerProfile({ customer, onClose}) {
         
         {/* Optional: Show count of stations */}
         <Text style={styles.chartFooter}>
-          {sortedData.length} {sortedData.length === 1 ? 'station' : 'stations'} • Sorted by value (low to high)
+          {i18n.t("admin.customerProfile.charts.footer", {
+            count: sortedData.length
+          })}
         </Text>
       </View>
     );
