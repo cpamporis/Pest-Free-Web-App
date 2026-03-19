@@ -210,7 +210,7 @@ export default function useCustomerHome({ customer, onLogout, onViewVisits }) {
             setNotificationCount,
             setLastFetchTime
           });
-        }, 30000);
+        }, 300000);
       };
       
       startPolling();
@@ -304,7 +304,39 @@ export default function useCustomerHome({ customer, onLogout, onViewVisits }) {
     }
   };
 
-  
+  const showAlert = (title, message, buttons) => {
+    if (Platform.OS === 'web') {
+      // For web/desktop, use window.confirm for simple confirmations
+      if (buttons && buttons.length > 0) {
+        // Check if it's a confirm/cancel dialog (typically 2 buttons)
+        if (buttons.length === 2) {
+          const confirmAction = window.confirm(`${title}\n\n${message}`);
+          if (confirmAction) {
+            // User clicked OK/Confirm - execute the second button's onPress (usually the action)
+            if (buttons[1]?.onPress) {
+              buttons[1].onPress();
+            }
+          } else {
+            // User clicked Cancel - execute the first button's onPress if it exists
+            if (buttons[0]?.onPress) {
+              buttons[0].onPress();
+            }
+          }
+        } else {
+          // Simple alert with just an OK button
+          window.alert(`${title}\n\n${message}`);
+          if (buttons[0]?.onPress) {
+            buttons[0].onPress();
+          }
+        }
+      } else {
+        window.alert(`${title}\n\n${message}`);
+      }
+    } else {
+      // For mobile, use React Native Alert
+      showAlert(title, message, buttons);
+    }
+  };  
 
   const loadAppointments = async () => {
       try {
@@ -392,22 +424,22 @@ export default function useCustomerHome({ customer, onLogout, onViewVisits }) {
 
   const handleServiceRequest = async () => {
       if (!serviceType) {
-        Alert.alert(i18n.t("common.error"), i18n.t("customer.serviceRequest.error.noServiceType"));
+        showAlert(i18n.t("common.error"), i18n.t("customer.serviceRequest.error.noServiceType"));
         return;
       }
   
       if (serviceType === "special" && !specialServiceSubtype) {
-        Alert.alert(i18n.t("common.error"), i18n.t("customer.serviceRequest.error.noSpecialSubtype"));
+        showAlert(i18n.t("common.error"), i18n.t("customer.serviceRequest.error.noSpecialSubtype"));
         return;
       }
   
       if (serviceType === "special" && specialServiceSubtype === "other" && !otherPestName.trim()) {
-        Alert.alert(i18n.t("common.error"), i18n.t("customer.serviceRequest.error.noOtherPest"));
+        showAlert(i18n.t("common.error"), i18n.t("customer.serviceRequest.error.noOtherPest"));
         return;
       }
   
       if (!description.trim()) {
-        Alert.alert(i18n.t("common.error"), i18n.t("customer.serviceRequest.error.noDescription"));
+        showAlert(i18n.t("common.error"), i18n.t("customer.serviceRequest.error.noDescription"));
         return;
       }
   
@@ -415,7 +447,7 @@ export default function useCustomerHome({ customer, onLogout, onViewVisits }) {
         setSubmittingRequest(true);
         
         if (!dashboard || !dashboard.customer || !dashboard.customer.customerId) {
-          Alert.alert(i18n.t("common.error"), i18n.t("customer.serviceRequest.error.noCustomerInfo"));
+          showAlert(i18n.t("common.error"), i18n.t("customer.serviceRequest.error.noCustomerInfo"));
           setSubmittingRequest(false);
           return;
         }
@@ -438,30 +470,50 @@ export default function useCustomerHome({ customer, onLogout, onViewVisits }) {
         if (serviceRequestImages.length > 0) {
           const formData = new FormData();
 
-          // Append normal fields
+          // Append normal fields dynamically (keeping your original approach)
           Object.keys(requestData).forEach((key) => {
             if (requestData[key] !== null && requestData[key] !== undefined) {
               formData.append(key, requestData[key]);
             }
           });
 
-          // Append ALL images
-          serviceRequestImages.forEach((img, index) => {
-            formData.append("images", {
-              uri: img.uri,
-              type: img.type || "image/jpeg",
-              name:
-                img.fileName ||
-                `service_request_${index}_${Date.now()}.jpg`,
-            });
-          });
+          // Append ALL images with proper formatting for each platform
+          for (let i = 0; i < serviceRequestImages.length; i++) {
+            const img = serviceRequestImages[i];
+            if (!img?.uri) continue;
+
+            const name = img.fileName || img.name || `service_request_${i}_${Date.now()}.jpg`;
+            const type = img.type || "image/jpeg";
+
+            if (Platform.OS === "web") {
+              // Web: Convert to blob
+              try {
+                const response = await fetch(img.uri);
+                const blob = await response.blob();
+                formData.append("images", blob, name);
+              } catch (error) {
+                console.error("❌ Error converting image to blob:", error);
+              }
+            } else {
+              // Mobile: Use object with uri
+              formData.append("images", {
+                uri: img.uri,
+                name,
+                type,
+              });
+            }
+          }
+
+          // Log formData contents for debugging
+          console.log("📸 Sending FormData with fields:", Object.fromEntries(formData._parts || []));
+          
           result = await apiService.submitCustomerRequest(formData, true);
         } else {
           result = await apiService.submitCustomerRequest(requestData);
         }
         
         if (result?.success) {
-          Alert.alert(
+          showAlert(
             i18n.t("customer.serviceRequest.success.title"),
             i18n.t("customer.serviceRequest.success.message"),
             [
@@ -491,7 +543,7 @@ export default function useCustomerHome({ customer, onLogout, onViewVisits }) {
   
       } catch (err) {
         console.error("Service request error:", err);
-        Alert.alert(i18n.t("common.error"), err.message || i18n.t("customer.serviceRequest.error.submitFailed"));
+        showAlert(i18n.t("common.error"), err.message || i18n.t("customer.serviceRequest.error.submitFailed"));
       } finally {
         setSubmittingRequest(false);
       }
@@ -596,7 +648,7 @@ export default function useCustomerHome({ customer, onLogout, onViewVisits }) {
 
   const handleRescheduleAppointment = async (appointment) => {
     if (!newAppointmentDate || !newAppointmentTime) {
-      Alert.alert(i18n.t("common.error"), i18n.t("customer.modals.reschedule.error.selectBoth"));
+      showAlert(i18n.t("common.error"), i18n.t("customer.modals.reschedule.error.selectBoth"));
       return;
     }
 
@@ -609,7 +661,7 @@ export default function useCustomerHome({ customer, onLogout, onViewVisits }) {
       today.setHours(0, 0, 0, 0);
       
       if (newDateObj < today) {
-        Alert.alert(i18n.t("common.error"), i18n.t("customer.modals.reschedule.error.futureDate"));
+        showAlert(i18n.t("common.error"), i18n.t("customer.modals.reschedule.error.futureDate"));
         setRescheduling(false);
         return;
       }
@@ -622,7 +674,7 @@ export default function useCustomerHome({ customer, onLogout, onViewVisits }) {
       });
 
       if (result?.success) {
-        Alert.alert(
+        showAlert(
           i18n.t("customer.modals.reschedule.success.title"),
           i18n.t("customer.modals.reschedule.success.message"),
           [
@@ -646,7 +698,7 @@ export default function useCustomerHome({ customer, onLogout, onViewVisits }) {
       
     } catch (err) {
       console.error("❌ Reschedule request error:", err);
-      Alert.alert(i18n.t("common.error"), err.message || i18n.t("customer.modals.reschedule.error.submitFailed") || "Failed to submit reschedule request");
+      showAlert(i18n.t("common.error"), err.message || i18n.t("customer.modals.reschedule.error.submitFailed") || "Failed to submit reschedule request");
     } finally {
       setRescheduling(false);
     }
@@ -655,19 +707,19 @@ export default function useCustomerHome({ customer, onLogout, onViewVisits }) {
   const handleChangePassword = async () => {
     // Basic validation
     if (!currentPassword || !newPassword || !confirmPassword) {
-      Alert.alert(i18n.t("common.error"), i18n.t("customer.account.changePassword.error.allFields"));
+      showAlert(i18n.t("common.error"), i18n.t("customer.account.changePassword.error.allFields"));
       return;
     }
 
     // Check if new password meets minimum requirements
     if (newPassword.length < 8) {
-      Alert.alert(i18n.t("common.error"), i18n.t("customer.account.changePassword.error.minLength"));
+      showAlert(i18n.t("common.error"), i18n.t("customer.account.changePassword.error.minLength"));
       return;
     }
 
     // Check if passwords match
     if (newPassword !== confirmPassword) {
-      Alert.alert(i18n.t("common.error"), i18n.t("customer.account.changePassword.error.mismatch"));
+      showAlert(i18n.t("common.error"), i18n.t("customer.account.changePassword.error.mismatch"));
       return;
     }
 
@@ -681,7 +733,7 @@ export default function useCustomerHome({ customer, onLogout, onViewVisits }) {
       );
 
       if (result?.success) {
-        Alert.alert(
+        showAlert(
           i18n.t("common.success"), 
           i18n.t("customer.account.changePassword.success"),
           [
@@ -704,11 +756,11 @@ export default function useCustomerHome({ customer, onLogout, onViewVisits }) {
         // ✅ FIX: Don't log this specific error to the customer's console
         // Only show the appropriate alert
         if (errorMessage.includes("Invalid current password")) {
-          Alert.alert(i18n.t("common.error"), i18n.t("customer.account.changePassword.error.wrongCurrent"));
+          showAlert(i18n.t("common.error"), i18n.t("customer.account.changePassword.error.wrongCurrent"));
           // Clear current password field
           setCurrentPassword("");
         } else {
-          Alert.alert(i18n.t("common.error"), errorMessage);
+          showAlert(i18n.t("common.error"), errorMessage);
         }
       }
 
@@ -728,7 +780,7 @@ export default function useCustomerHome({ customer, onLogout, onViewVisits }) {
         setCurrentPassword("");
       }
       
-      Alert.alert(i18n.t("common.error"), errorMessage);
+      showAlert(i18n.t("common.error"), errorMessage);
     } finally {
       setChangingPassword(false);
     }
@@ -747,7 +799,7 @@ export default function useCustomerHome({ customer, onLogout, onViewVisits }) {
       if (result.didCancel) return;
 
       if (result.errorCode) {
-        Alert.alert(i18n.t("common.error"), result.errorMessage || i18n.t("customer.serviceRequest.error.imagePicker") || "Failed to pick image");
+        showAlert(i18n.t("common.error"), result.errorMessage || i18n.t("customer.serviceRequest.error.imagePicker") || "Failed to pick image");
         return;
       }
 
@@ -761,7 +813,7 @@ export default function useCustomerHome({ customer, onLogout, onViewVisits }) {
       }
     } catch (error) {
       console.error("Image picker error:", error);
-      Alert.alert(i18n.t("common.error"), i18n.t("customer.serviceRequest.error.imagePicker") || "Failed to access image library");
+      showAlert(i18n.t("common.error"), i18n.t("customer.serviceRequest.error.imagePicker") || "Failed to access image library");
     }
   };
 
@@ -779,7 +831,7 @@ export default function useCustomerHome({ customer, onLogout, onViewVisits }) {
       if (result.didCancel) return;
 
       if (result.errorCode) {
-        Alert.alert(i18n.t("common.error"), result.errorMessage || i18n.t("customer.serviceRequest.error.camera") || "Failed to capture image");
+        showAlert(i18n.t("common.error"), result.errorMessage || i18n.t("customer.serviceRequest.error.camera") || "Failed to capture image");
         return;
       }
 
@@ -788,12 +840,19 @@ export default function useCustomerHome({ customer, onLogout, onViewVisits }) {
       }
     } catch (error) {
       console.error("Camera error:", error);
-      Alert.alert(i18n.t("common.error"), i18n.t("customer.serviceRequest.error.camera") || "Failed to open camera");
+      showAlert(i18n.t("common.error"), i18n.t("customer.serviceRequest.error.camera") || "Failed to open camera");
     }
   };
 
   const openserviceRequestImagesChooser = () => {
-    Alert.alert(
+    // For desktop/web, only show gallery option (like MyocideScreen)
+    if (Platform.OS === 'web') {
+      pickserviceRequestImagesFromGallery();
+      return;
+    }
+
+    // For mobile, show both camera and gallery
+    showAlert(
       i18n.t("customer.serviceRequest.form.addPhotos") || "Add Photo", 
       i18n.t("customer.serviceRequest.form.chooseOption") || "Choose an option",
       [
@@ -950,19 +1009,19 @@ export default function useCustomerHome({ customer, onLogout, onViewVisits }) {
     Linking.canOpenURL(url)
       .then(supported => {
         if (!supported) {
-          Alert.alert(i18n.t("common.error"), i18n.t("customer.contact.error.noPhone") || "Phone calls are not supported on this device");
+          showAlert(i18n.t("common.error"), i18n.t("customer.contact.error.noPhone") || "Phone calls are not supported on this device");
         } else {
           return Linking.openURL(url);
         }
       })
       .catch(err => {
         console.error("Error opening phone app:", err);
-        Alert.alert(i18n.t("common.error"), i18n.t("customer.contact.error.cantOpenPhone") || "Could not open phone app");
+        showAlert(i18n.t("common.error"), i18n.t("customer.contact.error.cantOpenPhone") || "Could not open phone app");
       });
   };
   const handleSendEmail = () => {
     if (!emailSubject.trim() || !emailBody.trim()) {
-      Alert.alert(i18n.t("common.error"), i18n.t("customer.contact.error.fillBoth"));
+      showAlert(i18n.t("common.error"), i18n.t("customer.contact.error.fillBoth"));
       return;
     }
 
@@ -976,7 +1035,7 @@ export default function useCustomerHome({ customer, onLogout, onViewVisits }) {
     Linking.canOpenURL(url)
       .then(supported => {
         if (!supported) {
-          Alert.alert(i18n.t("common.error"), i18n.t("customer.contact.error.noEmailClient"));
+          showAlert(i18n.t("common.error"), i18n.t("customer.contact.error.noEmailClient"));
           setSendingEmail(false);
         } else {
           return Linking.openURL(url);
@@ -990,7 +1049,7 @@ export default function useCustomerHome({ customer, onLogout, onViewVisits }) {
       })
       .catch(err => {
         console.error("Error opening email client:", err);
-        Alert.alert(i18n.t("common.error"), i18n.t("customer.contact.error.cantOpen"));
+        showAlert(i18n.t("common.error"), i18n.t("customer.contact.error.cantOpen"));
         setSendingEmail(false);
       });
   };
@@ -1252,7 +1311,7 @@ export default function useCustomerHome({ customer, onLogout, onViewVisits }) {
       
     } catch (error) {
       console.error("❌ Error in handleMarkAllAsRead:", error);
-      Alert.alert(i18n.t("common.error"), i18n.t("customer.notifications.markAllReadError") || "Failed to mark all notifications as read");
+      showAlert(i18n.t("common.error"), i18n.t("customer.notifications.markAllReadError") || "Failed to mark all notifications as read");
     }
   };
 

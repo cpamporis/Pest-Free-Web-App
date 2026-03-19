@@ -9,15 +9,19 @@ import {
   StyleSheet,
   RefreshControl,
   StatusBar,
-  Alert,
+  Platform
 } from "react-native";
 import apiService from "../../services/apiService";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { MaterialIcons, FontAwesome5, Ionicons, Feather } from '@expo/vector-icons';
-import * as Sharing from "expo-sharing";
-import * as FileSystem from 'expo-file-system/legacy';
 import { formatTimeInGreece, formatDateInGreece } from "../../utils/timeZoneUtils";
 import i18n from "../../services/i18n";
+
+let Sharing, FileSystem;
+if (Platform.OS !== 'web') {
+  Sharing = require('expo-sharing');
+  FileSystem = require('expo-file-system');
+}
 
 export default function CustomerVisitsScreen({ 
   onSelectVisit, 
@@ -30,6 +34,40 @@ export default function CustomerVisitsScreen({
   const [refreshing, setRefreshing] = useState(false);
   const [visits, setVisits] = useState([]);
   const [downloadingId, setDownloadingId] = useState(null);
+
+  const showAlert = (title, message, buttons) => {
+    if (Platform.OS === 'web') {
+      // For web/desktop, use window.confirm for simple confirmations
+      if (buttons && buttons.length > 0) {
+        // Check if it's a confirm/cancel dialog (typically 2 buttons)
+        if (buttons.length === 2) {
+          const confirmAction = window.confirm(`${title}\n\n${message}`);
+          if (confirmAction) {
+            // User clicked OK/Confirm - execute the second button's onPress (usually the action)
+            if (buttons[1]?.onPress) {
+              buttons[1].onPress();
+            }
+          } else {
+            // User clicked Cancel - execute the first button's onPress if it exists
+            if (buttons[0]?.onPress) {
+              buttons[0].onPress();
+            }
+          }
+        } else {
+          // Simple alert with just an OK button
+          window.alert(`${title}\n\n${message}`);
+          if (buttons[0]?.onPress) {
+            buttons[0].onPress();
+          }
+        }
+      } else {
+        window.alert(`${title}\n\n${message}`);
+      }
+    } else {
+      // For mobile, use React Native Alert
+      showAlert(title, message, buttons);
+    }
+  };
 
   const loadVisits = async () => {
     try {
@@ -56,12 +94,12 @@ export default function CustomerVisitsScreen({
         
         setVisits(processedVisits);
       } else {
-        Alert.alert(i18n.t("common.error"), res?.error || i18n.t("customer.visits.errors.loadFailed"));
+        showAlert(i18n.t("common.error"), res?.error || i18n.t("customer.visits.errors.loadFailed"));
         setVisits([]);
       }
     } catch (error) {
       console.error("❌ Load visits error:", error);
-      Alert.alert(i18n.t("common.error"), i18n.t("customer.visits.errors.loadFailed"));
+      showAlert(i18n.t("common.error"), i18n.t("customer.visits.errors.loadFailed"));
       setVisits([]);
     } finally {
       setLoading(false);
@@ -83,25 +121,29 @@ export default function CustomerVisitsScreen({
     return formatTimeInGreece(dateString);
   };
 
-
   // Download PDF report
   const downloadPDFReport = async (visit) => {
     try {
-      setDownloadingId(visit.visitId); // Use visit.visitId
+      setDownloadingId(visit.visitId);
       
-      const reportId = visit.visitId; // Use visit.visitId
+      const reportId = visit.visitId;
       
       if (!reportId) {
-        Alert.alert(i18n.t("common.error"), i18n.t("customer.visits.errors.noReportId"));
+        showAlert(i18n.t("common.error"), i18n.t("customer.visits.errors.noReportId"));
         return;
       }
       
       const token = apiService.getCurrentToken();
       if (!token) {
-        Alert.alert(i18n.t("common.error"), i18n.t("customer.visits.errors.authRequired"));
+        showAlert(i18n.t("common.error"), i18n.t("customer.visits.errors.authRequired"));
         return;
       }
       
+      const lang = i18n.getLocale();
+      const API_BASE_URL = apiService.API_BASE_URL || "http://192.168.1.79:3000/api";
+      const url = `${API_BASE_URL}/reports/pdf/${reportId}?lang=${lang}`;
+      
+      // Create filename
       const dateStr = visit.startTime ? 
         new Date(visit.startTime).toISOString().split('T')[0] : 
         new Date().toISOString().split('T')[0];
@@ -112,43 +154,117 @@ export default function CustomerVisitsScreen({
       
       const fileName = `Service_Report_${safeName}_${dateStr}.pdf`;
       
-      const API_BASE_URL = apiService.API_BASE_URL || "http://192.168.1.79:3000/api";
-      const lang = i18n.getLocale();
-      const pdfUrl = `${API_BASE_URL}/reports/pdf/${reportId}?lang=${lang}`;
-      
-      const downloadResult = await FileSystem.downloadAsync(
-        pdfUrl,
-        FileSystem.documentDirectory + fileName,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          }
-        }
-      );
-      
-      if (downloadResult.status === 200) {
-        if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(downloadResult.uri, {
-            mimeType: "application/pdf",
-            dialogTitle: i18n.t("customer.visits.alerts.downloadComplete"),
-            UTI: "com.adobe.pdf",
+      // Web platform - use anchor tag download with fetch
+      if (Platform.OS === 'web') {
+        try {
+          // Use fetch to get the blob with authentication
+          const response = await fetch(url, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
           });
-        } else {
-          Alert.alert(
+          
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          
+          const blob = await response.blob();
+          const blobUrl = window.URL.createObjectURL(blob);
+          
+          // Create and trigger download
+          const link = document.createElement('a');
+          link.href = blobUrl;
+          link.download = fileName;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          
+          // Clean up
+          window.URL.revokeObjectURL(blobUrl);
+          
+          showAlert(
             i18n.t("customer.visits.alerts.downloadComplete"),
-            i18n.t("customer.visits.alerts.downloadCompleteMessage", { path: downloadResult.uri }),
+            i18n.t("customer.visits.alerts.downloadStarted"),
             [{ text: i18n.t("common.ok") || "OK" }]
           );
+          
+          setDownloadingId(null);
+          return;
+        } catch (webError) {
+          console.error("❌ Web download error:", webError);
+          throw webError;
         }
+      }
+      
+      // For mobile - use FileSystem (only reached if not web)
+      if (!FileSystem || !Sharing) {
+        throw new Error("FileSystem modules not available on this platform");
+      }
+      
+      const getDownloadDirectory = () => {
+        if (FileSystem.documentDirectory) {
+          return FileSystem.documentDirectory;
+        }
+        if (FileSystem.cacheDirectory) {
+          return FileSystem.cacheDirectory;
+        }
+        throw new Error("No suitable directory available for download");
+      };
+      
+      const downloadDir = getDownloadDirectory();
+      const fileUri = downloadDir + fileName;
+      
+      const downloadResumable = FileSystem.createDownloadResumable(
+        url,
+        fileUri,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        },
+        (downloadProgress) => {
+          // You can track progress here if needed
+          const progress = downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite;
+          console.log(`Download progress: ${Math.round(progress * 100)}%`);
+        }
+      );
+
+      const { uri } = await downloadResumable.downloadAsync();
+      
+      const canShare = await Sharing.isAvailableAsync();
+      
+      if (canShare) {
+        await Sharing.shareAsync(uri, {
+          mimeType: 'application/pdf',
+          dialogTitle: i18n.t("customer.visits.alerts.downloadComplete"),
+          UTI: 'com.adobe.pdf'
+        });
       } else {
-        throw new Error(i18n.t("customer.visits.alerts.downloadFailed") + ` ${downloadResult.status}`);
+        showAlert(
+          i18n.t("customer.visits.alerts.downloadComplete"),
+          i18n.t("customer.visits.alerts.downloadCompleteMessage", { path: uri }),
+          [{ text: i18n.t("common.ok") || "OK" }]
+        );
       }
       
     } catch (error) {
       console.error("❌ PDF download error:", error);
-      Alert.alert(
+      
+      let errorMessage = error.message;
+      
+      if (error.message.includes('Network request failed')) {
+        errorMessage = i18n.t("customer.visits.errors.network");
+      } else if (error.message.includes('401') || error.message.includes('403')) {
+        errorMessage = i18n.t("customer.visits.errors.auth");
+      } else if (error.message.includes('404')) {
+        errorMessage = i18n.t("customer.visits.errors.notFound");
+      } else if (error.message.includes('Document directory not available')) {
+        errorMessage = i18n.t("customer.visits.errors.storage");
+      }
+      
+      showAlert(
         i18n.t("customer.visits.alerts.downloadFailed"),
-        error.message || i18n.t("customer.visits.errors.downloadFailed")
+        errorMessage || i18n.t("customer.visits.errors.downloadFailed")
       );
     } finally {
       setDownloadingId(null);
@@ -214,7 +330,7 @@ export default function CustomerVisitsScreen({
 
     if (!visitId) {
       console.error("❌ No visitId found in visit object:", visit);
-      Alert.alert(i18n.t("common.error"), i18n.t("customer.visits.errors.noVisitId"));
+      showAlert(i18n.t("common.error"), i18n.t("customer.visits.errors.noVisitId"));
       return;
     }
 

@@ -493,6 +493,8 @@
         "decline": "Decline",
         "accept": "Accept"
       },
+      "declineNotes": "Your appointment hasn't been rescheduled",
+      "dateNotSpecified": "Date not specified",
       "detailsModal": {
         "title": "Request Details",
         "customer": "Customer",
@@ -510,7 +512,8 @@
         "additionalNotes": "Additional Notes",
         "declineRequest": "Decline Request",
         "acceptAction": "{{action}}",
-        "acceptAndSchedule": "Appointment created successfully"
+        "acceptAndSchedule": "Appointment created successfully",
+        "acceptReschedule": "Accept Request"
       },
       "declineRequest":"Decline Request",
       "declineConfirm": "Decline customer's request?",
@@ -539,7 +542,10 @@
         "noTechnicians": "No technicians available. Please add technicians first.",
         "cancel": "Cancel",
         "createAppointment": "Create Appointment",
-        "approveReschedule": "Approve Reschedule"
+        "approveReschedule": "Approve Reschedule",
+        "createSuccess":"Appoiintment created successfully",
+        "rescheduleSuccessDetailed": "Appointment rescheduled successfully",
+        "rescheduleApproved": "Appointment rescheduled successfully"
       },
       "passwordModal": {
         "title": "Reset Customer Password",
@@ -1140,6 +1146,7 @@
         "messagePlaceholder": "Type your message here...",
         "send": "Send Email",
         "sending": "Sending...",
+        "footer": "Sent by Pestify Customer Portal",
         "note": "• Your default email app will open with pre-filled content\n• Make sure to review before sending"
       },
       "error": {
@@ -1322,7 +1329,8 @@
         "alerts": {
           "downloadComplete": "Download Complete",
           "downloadCompleteMessage": "The PDF report has been downloaded to:\n{{path}}",
-          "downloadFailed": "Download Failed"
+          "downloadFailed": "Download Failed",
+          "downloadStarted": "Report has been successfully downloaded"
         },
         "back": "Back"
       },
@@ -1583,8 +1591,8 @@
       "quickNav": {
         "button": "Start Navigation",
         "noAddress": "No Address Available",
-        "chooseApp": "Choose Navigation App",
-        "prompt": "How would you like to navigate to {{name}}?"
+        "chooseApp": "Finding Route",
+        "prompt": "You will be automatically navigated to {{name}}"
       },
       "apps": {
         "googleMaps": {

@@ -7,7 +7,8 @@ import {
   TextInput,
   TouchableOpacity,
   Image,
-  Alert
+  Alert,
+  Platform,
 } from "react-native";
 import { StyleSheet } from "react-native";
 
@@ -33,16 +34,50 @@ export default function LoginScreen({
     setCurrentLanguage(i18n.getLocale()); // Update state with getter
   };
 
+  const showAlert = (title, message, buttons) => {
+    if (Platform.OS === 'web') {
+      // For web/desktop, use window.confirm for simple confirmations
+      if (buttons && buttons.length > 0) {
+        // Check if it's a confirm/cancel dialog (typically 2 buttons)
+        if (buttons.length === 2) {
+          const confirmAction = window.confirm(`${title}\n\n${message}`);
+          if (confirmAction) {
+            // User clicked OK/Confirm - execute the second button's onPress (usually the action)
+            if (buttons[1]?.onPress) {
+              buttons[1].onPress();
+            }
+          } else {
+            // User clicked Cancel - execute the first button's onPress if it exists
+            if (buttons[0]?.onPress) {
+              buttons[0].onPress();
+            }
+          }
+        } else {
+          // Simple alert with just an OK button
+          window.alert(`${title}\n\n${message}`);
+          if (buttons[0]?.onPress) {
+            buttons[0].onPress();
+          }
+        }
+      } else {
+        window.alert(`${title}\n\n${message}`);
+      }
+    } else {
+      // For mobile, use React Native Alert
+      showAlert(title, message, buttons);
+    }
+  };
+
   const tryLogin = async () => {
     if (!email || !password) {
-      Alert.alert(i18n.t("login.error.title"), i18n.t("login.error.enterEmailAndPassword"));
+      showAlert(i18n.t("login.error.title"), i18n.t("login.error.enterEmailAndPassword"));
       return;
     }
 
     const result = await apiService.login(email, password);
 
     if (!result || !result.success) {
-      Alert.alert(i18n.t("login.error.loginFailed"));
+      showAlert(i18n.t("login.error.loginFailed"));
       setPassword("");
       return;
     }
@@ -64,7 +99,7 @@ export default function LoginScreen({
       return;
     }
 
-    Alert.alert(i18n.t("login.error.loginFailed"));
+    showAlert(i18n.t("login.error.loginFailed"));
     setPassword("");
   };
 

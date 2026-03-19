@@ -9,6 +9,7 @@ import {
   StyleSheet,
   ScrollView,
   Image,
+  Platform,
   ActivityIndicator
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context"; // Updated import
@@ -21,9 +22,43 @@ export default function PasswordRecovery({ onBack, onDone }) {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const showAlert = (title, message, buttons) => {
+    if (Platform.OS === 'web') {
+      // For web/desktop, use window.confirm for simple confirmations
+      if (buttons && buttons.length > 0) {
+        // Check if it's a confirm/cancel dialog (typically 2 buttons)
+        if (buttons.length === 2) {
+          const confirmAction = window.confirm(`${title}\n\n${message}`);
+          if (confirmAction) {
+            // User clicked OK/Confirm - execute the second button's onPress (usually the action)
+            if (buttons[1]?.onPress) {
+              buttons[1].onPress();
+            }
+          } else {
+            // User clicked Cancel - execute the first button's onPress if it exists
+            if (buttons[0]?.onPress) {
+              buttons[0].onPress();
+            }
+          }
+        } else {
+          // Simple alert with just an OK button
+          window.alert(`${title}\n\n${message}`);
+          if (buttons[0]?.onPress) {
+            buttons[0].onPress();
+          }
+        }
+      } else {
+        window.alert(`${title}\n\n${message}`);
+      }
+    } else {
+      // For mobile, use React Native Alert
+      showAlert(title, message, buttons);
+    }
+  };
+
   const submitRecovery = async () => {
     if (!email) {
-      Alert.alert(
+      showAlert(
         i18n.t("common.error"), 
         i18n.t("passwordRecovery.errors.noEmail")
       );
@@ -33,7 +68,7 @@ export default function PasswordRecovery({ onBack, onDone }) {
     // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      Alert.alert(
+      showAlert(
         i18n.t("common.error"), 
         i18n.t("passwordRecovery.errors.invalidEmail")
       );
@@ -46,14 +81,14 @@ export default function PasswordRecovery({ onBack, onDone }) {
       const result = await apiService.submitPasswordRecovery(email);
 
       if (!result?.success) {
-        Alert.alert(
+        showAlert(
           i18n.t("common.error"), 
           result?.error || i18n.t("passwordRecovery.errors.submitFailed")
         );
         return;
       }
 
-      Alert.alert(
+      showAlert(
         i18n.t("passwordRecovery.success.title"),
         i18n.t("passwordRecovery.success.message"),
         [
@@ -65,7 +100,7 @@ export default function PasswordRecovery({ onBack, onDone }) {
       );
     } catch (error) {
       console.error("Password recovery error:", error);
-      Alert.alert(
+      showAlert(
         i18n.t("common.error"), 
         i18n.t("passwordRecovery.errors.unexpected")
       );

@@ -274,8 +274,18 @@ export default function CustomerRequestScreen({ onClose }) {
 
   const extractOriginalDate = (description) => {
     if (!description) return null;
-    const match = description.match(/Original appointment: (\d{4}-\d{2}-\d{2})/);
-    return match ? match[1] : null;
+
+    const match = description.match(/Original appointment: (.+?) at/);
+    if (!match) return null;
+
+    try {
+      const date = new Date(match[1]);
+      if (!isNaN(date.getTime())) {
+        return date.toISOString().split('T')[0]; // YYYY-MM-DD
+      }
+    } catch {}
+
+    return null;
   };
 
   const extractOriginalTime = (description) => {

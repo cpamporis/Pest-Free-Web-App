@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import apiService from "../../services/apiService";
 import { Alert } from "react-native";
 import i18n from "../../services/i18n";
+import {Platform} from "react-native";
 
 // Storage keys
 export const NOTIFICATIONS_STORAGE_KEY = "@PestFree_CustomerNotifications";
@@ -217,6 +218,40 @@ export const notificationTypes = {
     }
   };
 
+  const showAlert = (title, message, buttons) => {
+    if (Platform.OS === 'web') {
+      // For web/desktop, use window.confirm for simple confirmations
+      if (buttons && buttons.length > 0) {
+        // Check if it's a confirm/cancel dialog (typically 2 buttons)
+        if (buttons.length === 2) {
+          const confirmAction = window.confirm(`${title}\n\n${message}`);
+          if (confirmAction) {
+            // User clicked OK/Confirm - execute the second button's onPress (usually the action)
+            if (buttons[1]?.onPress) {
+              buttons[1].onPress();
+            }
+          } else {
+            // User clicked Cancel - execute the first button's onPress if it exists
+            if (buttons[0]?.onPress) {
+              buttons[0].onPress();
+            }
+          }
+        } else {
+          // Simple alert with just an OK button
+          window.alert(`${title}\n\n${message}`);
+          if (buttons[0]?.onPress) {
+            buttons[0].onPress();
+          }
+        }
+      } else {
+        window.alert(`${title}\n\n${message}`);
+      }
+    } else {
+      // For mobile, use React Native Alert
+      showAlert(title, message, buttons);
+    }
+  };  
+
   // Mark notification as read
   const markNotificationAsRead = async ({
         notificationId,
@@ -273,7 +308,7 @@ export const notificationTypes = {
     setNotificationCount
   }) => {
     
-    Alert.alert(
+    showAlert(
       i18n.t("customer.modals.markAllRead.title") || "Mark All as Read",
       i18n.t("customer.modals.markAllRead.message") || "Mark all notifications as read?",
       [
@@ -314,7 +349,7 @@ export const notificationTypes = {
               }
             } catch (error) {
               console.error("❌ Error marking all as read:", error);
-              Alert.alert(i18n.t("common.error"), i18n.t("customer.notifications.markAllReadError") || "Failed to mark all notifications as read");
+              showAlert(i18n.t("common.error"), i18n.t("customer.notifications.markAllReadError") || "Failed to mark all notifications as read");
             }
           }
         }
@@ -328,7 +363,7 @@ export const notificationTypes = {
             setNotificationCount
             }) => {
 
-          Alert.alert(
+          showAlert(
             i18n.t("customer.modals.clearAll.title") || "Clear All Notifications",
             i18n.t("customer.modals.clearAll.message") || "Are you sure you want to clear all notifications?",
             [
