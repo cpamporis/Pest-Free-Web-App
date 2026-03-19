@@ -336,8 +336,6 @@ const getSpecialServiceLabel = (subtype) => {
     setWeekStart(getWeekStart(new Date()));
   };
 
-  
-
   const getTechnicianName = (appointment) => {
     if (!appointment) return '—';
 
