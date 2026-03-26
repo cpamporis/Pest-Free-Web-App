@@ -1,4 +1,4 @@
-// AdminTechSchedule.js - Professional Styled Version
+// AdminTechSchedule.js - Desktop
 import React, { useEffect, useState } from "react";
 import {
   View,
