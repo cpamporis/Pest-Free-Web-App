@@ -114,11 +114,10 @@ async function verifyTokenWithBackend(token) {
     const response = await fetch(`${API_BASE_URL}/verify-token`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ token })
+        'Authorization': `Bearer ${token}`
+      }
     });
-    
+
     const result = await response.json();
     return result;
   } catch (error) {
@@ -188,6 +187,10 @@ const apiService = {
   getVisitFrequency,
   updateRescheduleStatus(appointmentId, payload) {
     return apiService.updateAppointmentRescheduleStatus(appointmentId, payload);
+  },
+
+  async getOrganizationUsage() {
+    return request("GET", "/admin/usage");
   },
 
   async getTotalRequestsToday() {
@@ -378,10 +381,10 @@ const apiService = {
       }
     }
 
-    if (result.role === "admin") {
+    if (result.role === "admin" || result.role === "super_admin") {
       return {
         success: true,
-        role: "admin",
+        role: result.role,
         token: result.token
       };
     }

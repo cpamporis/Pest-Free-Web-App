@@ -1043,10 +1043,12 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
   const [deletedCustomers, setDeletedCustomers] = useState([]);
   const [showDeletedCustomers, setShowDeletedCustomers] = useState(false);
   const [showCustomerList, setShowCustomerList] = useState(true);
+  const [usage, setUsage] = useState(null);
   
 
   useEffect(() => {
     loadCustomers();
+    loadUsage();
   }, []);
 
   useEffect(() => {
@@ -1069,6 +1071,18 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
     console.log("📄 Passing through report data:");
     // Let CustomerProfile handle everything
   };
+
+  const loadUsage = async () => {
+      try {
+        const res = await apiService.getOrganizationUsage();
+  
+        if (res.success) {
+          setUsage(res);
+        }
+      } catch (err) {
+        console.error("❌ Usage load error:", err);
+      }
+    };
 
   async function loadCustomers() {
     setLoading(true);
@@ -1119,8 +1133,9 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
     }
   };
 
-  function handleAddCustomer(newCustomer) {
+  async function handleAddCustomer(newCustomer) {
     setCustomers(prev => [newCustomer, ...prev]);
+    await loadUsage(); 
   }
 
   async function handleEditCustomer(data) {
@@ -1284,6 +1299,39 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
           </View>
         </View>
 
+        {usage && (
+                  <View style={styles.subscriptionCard}>
+                    
+                    <View style={styles.subscriptionHeader}>
+                      <Text style={styles.subscriptionPlan}>
+                        {usage.subscriptionPlan.toUpperCase()} PLAN
+                      </Text>
+        
+                      <View style={styles.subscriptionBadge}>
+                        <Text style={styles.subscriptionBadgeText}>
+                          {usage.customers.used}/{usage.customers.max}
+                        </Text>
+                      </View>
+                    </View>
+        
+                    <View style={styles.subscriptionBarContainer}>
+                      <View
+                        style={[
+                          styles.subscriptionBarFill,
+                          {
+                            width: `${(usage.customers.used / usage.customers.max) * 100}%`
+                          }
+                        ]}
+                      />
+                    </View>
+        
+                    <Text style={styles.subscriptionText}>
+                      Customers used: {usage.customers.used} / {usage.customers.max}
+                    </Text>
+        
+                  </View>
+                )}
+
         {/* STATS BAR */}
         <View style={styles.statsBar}>
           <View style={styles.statItem}>
@@ -1333,8 +1381,27 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
 
         <View style={styles.actionsGrid}>
           <TouchableOpacity
-            style={[styles.actionCard, { backgroundColor: "#1f9c8b" }]}
-            onPress={() => setShowAdd(true)}
+            style={[
+              styles.actionCard,
+              {
+                backgroundColor:
+                  usage && usage.customers.used >= usage.customers.max
+                    ? "#ccc"
+                    : "#1f9c8b"
+              }
+            ]}
+            onPress={() => {
+              if (usage && usage.customers.used >= usage.customers.max) {
+                Alert.alert(
+                  i18n.t("limits.title"),
+                  i18n.t("limits.customersReached", {
+                    max: usage.customers.max
+                  })
+                );
+                return;
+              }
+              setShowAdd(true);
+            }}
             activeOpacity={0.7}
           >
             <MaterialIcons name="person-add" size={28} color="#fff" />
@@ -1347,7 +1414,7 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
           <TouchableOpacity
             style={[styles.actionCard, { backgroundColor: "#1f9c8b" }]}
             onPress={() => {
-              if (customers.length === 0) return showAlert(i18n.t("admin.customers.actions.noCustomers"), i18n.t("admin.customers.actions.noCustomersToEdit"));
+              if (customers.length === 0) return Alert.alert(i18n.t("admin.customers.actions.noCustomers"), i18n.t("admin.customers.actions.noCustomersToEdit"));
               setShowSelectForEdit(true);
             }}
             activeOpacity={0.7}
@@ -1362,7 +1429,7 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
           <TouchableOpacity
             style={[styles.actionCard, { backgroundColor: "#1f9c8b" }]}
             onPress={() => {
-              if (customers.length === 0) return showAlert(i18n.t("admin.customers.actions.noCustomers"), i18n.t("admin.customers.actions.noCustomersToDelete"));
+              if (customers.length === 0) return Alert.alert(i18n.t("admin.customers.actions.noCustomers"), i18n.t("admin.customers.actions.noCustomersToDelete"));
               setShowSelectForDelete(true);
             }}
             activeOpacity={0.7}
@@ -1378,7 +1445,7 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
             style={[styles.actionCard, { backgroundColor: "#1f9c8b" }]}
             onPress={() => {
               if (deletedCustomers.length === 0) {
-                showAlert(i18n.t("admin.customers.actions.noDeletedCustomers"), i18n.t("admin.customers.actions.noDeletedToRestore"));
+                Alert.alert(i18n.t("admin.customers.actions.noDeletedCustomers"), i18n.t("admin.customers.actions.noDeletedToRestore"));
                 return;
               }
               setShowSelectForRestore(true);
@@ -1396,7 +1463,7 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
             style={[styles.actionCard, { backgroundColor: "#1f9c8b" }]}
             onPress={() => {
               if (deletedCustomers.length === 0) {
-                showAlert(i18n.t("admin.customers.actions.noDeletedCustomers"), i18n.t("admin.customers.actions.noDeletedToPermanentDelete"));
+                Alert.alert(i18n.t("admin.customers.actions.noDeletedCustomers"), i18n.t("admin.customers.actions.noDeletedToPermanentDelete"));
                 return;
               }
               setShowSelectForPermanentDelete(true);
@@ -2692,5 +2759,63 @@ actionCardDescription: {
   },
   dropdownIcon: {
     marginLeft: 4,
-  }
+  },
+  subscriptionCard: {
+  backgroundColor: "#fff",
+  marginHorizontal: 24,
+  marginTop: 16,
+  padding: 16,
+  borderRadius: 16,
+  shadowColor: "#000",
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.05,
+  shadowRadius: 8,
+  elevation: 3,
+  borderWidth: 1,
+  borderColor: "#f0f0f0",
+},
+
+subscriptionHeader: {
+  flexDirection: "row",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginBottom: 10,
+},
+
+subscriptionPlan: {
+  fontSize: 14,
+  fontWeight: "700",
+  color: "#2c3e50",
+},
+
+subscriptionBadge: {
+  backgroundColor: "#e9f7f6",
+  paddingHorizontal: 10,
+  paddingVertical: 4,
+  borderRadius: 10,
+},
+
+subscriptionBadgeText: {
+  color: "#1f9c8b",
+  fontWeight: "700",
+  fontSize: 12,
+},
+
+subscriptionBarContainer: {
+  height: 8,
+  backgroundColor: "#ecf0f1",
+  borderRadius: 6,
+  overflow: "hidden",
+  marginBottom: 8,
+},
+
+subscriptionBarFill: {
+  height: "100%",
+  backgroundColor: "#1f9c8b",
+},
+
+subscriptionText: {
+  fontSize: 12,
+  color: "#666",
+},
 });
