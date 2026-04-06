@@ -717,7 +717,10 @@
         "chooseGallery": "Επιλογή από Συλλογή",
         "changeImage": "Αλλαγή Εικόνας",
         "uploadMap": "Μεταφόρτωση Κάτοψης",
-        "saveChanges": "Αποθήκευση Αλλαγών"
+        "saveChanges": "Αποθήκευση Αλλαγών",
+        "deleteMapTitle": "Διαγραφή Κάτοψης",
+        "deleteMapConfirm": "Είστε σίγουροι ότι θέλετε να διαγράψετε αυτή την κάτοψη;",
+        "deleteMapSuccess": "Η κάτοψη διαγράφηκε με επιτυχία"
       },
       "deleteModal": {
         "title": "Αφαίρεση Πελάτη",

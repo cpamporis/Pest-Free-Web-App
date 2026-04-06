@@ -106,29 +106,6 @@ function AddCustomerModal({ onClose, onSave }) {
   const [selectedImage, setSelectedImage] = useState(null);
   const [uploadingMap, setUploadingMap] = useState(false);
 
-  const selectImage = async () => {
-    try {
-      const result = await launchImageLibrary({
-        mediaType: 'photo',
-        quality: 0.8,
-        maxWidth: 1920,
-        maxHeight: 1920,
-        selectionLimit: 1,
-      });
-      
-      if (result.didCancel) {
-        return;
-      } else if (result.errorCode) {
-        showAlert(i18n.t("common.error"), result.errorMessage || i18n.t("admin.customers.addModal.imagePickerError") || 'Failed to pick image');
-      } else if (result.assets && result.assets[0]) {
-        setSelectedImage(result.assets[0]);
-      }
-    } catch (error) {
-      console.error('Image picker error:', error);
-      showAlert(i18n.t("common.error"), i18n.t("admin.customers.addModal.imagePickerError") || 'Failed to access image library');
-    }
-  };
-
   const showAlert = (title, message, buttons) => {
     if (Platform.OS === 'web') {
       // For web/desktop, use window.confirm for simple confirmations
@@ -160,6 +137,29 @@ function AddCustomerModal({ onClose, onSave }) {
     } else {
       // For mobile, use React Native Alert
       showAlert(title, message, buttons);
+    }
+  };
+
+  const selectImage = async () => {
+    try {
+      const result = await launchImageLibrary({
+        mediaType: 'photo',
+        quality: 0.8,
+        maxWidth: 1920,
+        maxHeight: 1920,
+        selectionLimit: 1,
+      });
+      
+      if (result.didCancel) {
+        return;
+      } else if (result.errorCode) {
+        showAlert(i18n.t("common.error"), result.errorMessage || i18n.t("admin.customers.addModal.imagePickerError") || 'Failed to pick image');
+      } else if (result.assets && result.assets[0]) {
+        setSelectedImage(result.assets[0]);
+      }
+    } catch (error) {
+      console.error('Image picker error:', error);
+      showAlert(i18n.t("common.error"), i18n.t("admin.customers.addModal.imagePickerError") || 'Failed to access image library');
     }
   };
 
@@ -558,6 +558,24 @@ function EditCustomerModal({ customer, onClose, onSave }) {
   const [selectedImage, setSelectedImage] = useState(null);
   const [uploadingMap, setUploadingMap] = useState(false);
   const [customerMaps, setCustomerMaps] = useState([]);
+
+  const showAlert = (title, message, buttons) => {
+    if (Platform.OS === "web") {
+      if (buttons && buttons.length === 2) {
+        const confirmAction = window.confirm(`${title}\n\n${message}`);
+        if (confirmAction) {
+          buttons[1]?.onPress?.();
+        } else {
+          buttons[0]?.onPress?.();
+        }
+      } else {
+        window.alert(`${title}\n\n${message}`);
+        buttons?.[0]?.onPress?.();
+      }
+    } else {
+      Alert.alert(title, message, buttons);  // ✅ Use Alert.alert directly, NOT showAlert
+    }
+  };
 
   
   useEffect(() => {
@@ -1392,7 +1410,7 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
             ]}
             onPress={() => {
               if (usage && usage.customers.used >= usage.customers.max) {
-                Alert.alert(
+                showAlert(
                   i18n.t("limits.title"),
                   i18n.t("limits.customersReached", {
                     max: usage.customers.max
@@ -1414,7 +1432,7 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
           <TouchableOpacity
             style={[styles.actionCard, { backgroundColor: "#1f9c8b" }]}
             onPress={() => {
-              if (customers.length === 0) return Alert.alert(i18n.t("admin.customers.actions.noCustomers"), i18n.t("admin.customers.actions.noCustomersToEdit"));
+              if (customers.length === 0) return showAlert(i18n.t("admin.customers.actions.noCustomers"), i18n.t("admin.customers.actions.noCustomersToEdit"));
               setShowSelectForEdit(true);
             }}
             activeOpacity={0.7}
@@ -1429,7 +1447,7 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
           <TouchableOpacity
             style={[styles.actionCard, { backgroundColor: "#1f9c8b" }]}
             onPress={() => {
-              if (customers.length === 0) return Alert.alert(i18n.t("admin.customers.actions.noCustomers"), i18n.t("admin.customers.actions.noCustomersToDelete"));
+              if (customers.length === 0) return showAlert(i18n.t("admin.customers.actions.noCustomers"), i18n.t("admin.customers.actions.noCustomersToDelete"));
               setShowSelectForDelete(true);
             }}
             activeOpacity={0.7}
@@ -1445,7 +1463,7 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
             style={[styles.actionCard, { backgroundColor: "#1f9c8b" }]}
             onPress={() => {
               if (deletedCustomers.length === 0) {
-                Alert.alert(i18n.t("admin.customers.actions.noDeletedCustomers"), i18n.t("admin.customers.actions.noDeletedToRestore"));
+                showAlert(i18n.t("admin.customers.actions.noDeletedCustomers"), i18n.t("admin.customers.actions.noDeletedToRestore"));
                 return;
               }
               setShowSelectForRestore(true);
@@ -1463,7 +1481,7 @@ export default function CustomersScreen({ onClose, onOpenReport }) {
             style={[styles.actionCard, { backgroundColor: "#1f9c8b" }]}
             onPress={() => {
               if (deletedCustomers.length === 0) {
-                Alert.alert(i18n.t("admin.customers.actions.noDeletedCustomers"), i18n.t("admin.customers.actions.noDeletedToPermanentDelete"));
+                showAlert(i18n.t("admin.customers.actions.noDeletedCustomers"), i18n.t("admin.customers.actions.noDeletedToPermanentDelete"));
                 return;
               }
               setShowSelectForPermanentDelete(true);

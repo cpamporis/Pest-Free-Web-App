@@ -706,7 +706,10 @@
         "customerNameRequired": "Please add customer's name",
         "createSuccess": "Client created successfully",
         "createWithLoginSuccess": "Customer account created successfully",
-        "createWithoutLoginSuccess": "Customer's account was not created"
+        "createWithoutLoginSuccess": "Customer's account was not created",
+        "deleteMapTitle": "Delete Map",
+        "deleteMapConfirm": "Are you sure you want to delete this map?",
+        "deleteMapSuccess": "The map was deleted successfully"
       },
       "editModal": {
         "title": "Edit Customer",
