@@ -146,6 +146,20 @@ export default function AdminHomeScreen({ onLogout }) {
     });
   };
 
+  const getSubscriptionPlanName = (plan) => {
+      const planKey = String(plan || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, "_");
+
+      return i18n.t(
+        `admin.home.subscription.plans.${planKey}`,
+        {
+          defaultValue: String(plan || "").toUpperCase(),
+        }
+      );
+    };
+
   const handleOpenAdminReport = (visit) => {
     setAdminReportContext({
       visitId: visit.visitId || visit.id,
@@ -217,7 +231,11 @@ export default function AdminHomeScreen({ onLogout }) {
                     {/* PLAN HEADER */}
                     <View style={styles.subscriptionHeader}>
                       <Text style={styles.subscriptionPlan}>
-                        {usage.subscriptionPlan.toUpperCase()} PLAN
+                        {i18n.t("admin.home.subscription.plan", {
+                          plan: getSubscriptionPlanName(
+                            usage.subscriptionPlan
+                          ),
+                        })}
                       </Text>
         
                       <View style={styles.subscriptionBadge}>
@@ -229,7 +247,10 @@ export default function AdminHomeScreen({ onLogout }) {
         
                     {/* CUSTOMERS */}
                     <Text style={styles.subscriptionLabel}>
-                      Customers: {usage.customers.used} / {usage.customers.max}
+                      {i18n.t("admin.home.subscription.customers", {
+                        used: usage.customers.used,
+                        max: usage.customers.max,
+                      })}
                     </Text>
         
                     <View style={styles.subscriptionBarContainer}>
@@ -249,7 +270,10 @@ export default function AdminHomeScreen({ onLogout }) {
         
                     {/* TECHNICIANS */}
                     <Text style={[styles.subscriptionLabel, { marginTop: 10 }]}>
-                      Technicians: {usage.technicians.used} / {usage.technicians.max}
+                      {i18n.t("admin.home.subscription.technicians", {
+                        used: usage.technicians.used,
+                        max: usage.technicians.max,
+                      })} 
                     </Text>
         
                     <View style={styles.subscriptionBarContainer}>

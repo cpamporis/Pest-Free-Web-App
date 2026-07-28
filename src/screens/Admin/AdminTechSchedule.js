@@ -24,6 +24,40 @@ import pestfreeLogo from "../../../assets/pestfree_logo.png";
 import i18n from "../../services/i18n";
 import { useWindowDimensions } from "react-native";
 
+function normalizeCustomerSearch(value) {
+  const text = String(value ?? "").trim().toLocaleLowerCase();
+  return typeof text.normalize === "function"
+    ? text.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    : text;
+}
+
+function filterCustomersBySearch(customers, searchText) {
+  const query = normalizeCustomerSearch(searchText);
+  if (!query) return customers;
+
+  return customers.filter((customer) =>
+    [
+      customer.customerName,
+      customer.customerId,
+      customer.address,
+      customer.email,
+      customer.telephone,
+      customer.tin,
+      customer.ama,
+    ].some((value) => normalizeCustomerSearch(value).includes(query))
+  );
+}
+
+function getCustomerSearchCopy() {
+  const locale = String(i18n.locale || i18n.language || "").toLocaleLowerCase();
+  const isGreek = locale.startsWith("el") || locale.startsWith("gr");
+
+  return {
+    placeholder: isGreek ? "Αναζήτηση πελάτη..." : "Search customer...",
+    noResults: isGreek ? "Δεν βρέθηκαν πελάτες." : "No customers found.",
+  };
+}
+
 export default function AdminTechSchedule({ onClose, initialCustomerId, onAppointmentChanged }) {
   const [appointments, setAppointments] = useState([]);
   const [technicians, setTechnicians] = useState([]);
@@ -57,6 +91,7 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
   const [complianceValidUntil, setComplianceValidUntil] = useState("");
   const [showCompliancePicker, setShowCompliancePicker] = useState(false);
   const [servicePrice, setServicePrice] = useState("");
+  const [serviceVatPercent, setServiceVatPercent] = useState("24");
   const [appointmentCategory, setAppointmentCategory] = useState("first_time");
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [showTechnicianDropdown, setShowTechnicianDropdown] = useState(false);
@@ -78,6 +113,7 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
   const [editInsecticideDetails, setEditInsecticideDetails] = useState("");
   const [editDisinfectionDetails, setEditDisinfectionDetails] = useState("");
   const [editServicePrice, setEditServicePrice] = useState("");
+  const [editServiceVatPercent, setEditServiceVatPercent] = useState("");
   const [editAppointmentCategory, setEditAppointmentCategory] = useState("first_time");
   const [editComplianceValidUntil, setEditComplianceValidUntil] = useState("");
   const [showEditCategoryDropdown, setShowEditCategoryDropdown] = useState(false);
@@ -92,7 +128,7 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const [selectedCustomerForAdd, setSelectedCustomerForAdd] = useState(null);
   const [appointmentDate, setAppointmentDate] = useState(new Date());
-  
+  const [customerSearch, setCustomerSearch] = useState("");
 
   // Define special service subtypes
   const specialServiceSubtypes = [
@@ -115,6 +151,13 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
     { id: "disinfection", label: i18n.t("admin.schedule.serviceType.disinfection.label"), description: i18n.t("admin.schedule.serviceType.disinfection.description"), icon: "clean-hands", color: "#1f9c8b" },
     { id: "insecticide", label: i18n.t("admin.schedule.serviceType.insecticide.label"), description: i18n.t("admin.schedule.serviceType.insecticide.description"), icon: "pest-control", color: "#1f9c8b" },
     { id: "special", label: i18n.t("admin.schedule.serviceType.special.label"), description: i18n.t("admin.schedule.serviceType.special.description"), icon: "star", color: "#1f9c8b" },
+    {
+      id: "certificate",
+      label: i18n.t("admin.schedule.serviceType.certificate.label"),
+      description: i18n.t("admin.schedule.serviceType.certificate.description"),
+      icon: "verified",
+      color: "#1f9c8b"
+    },
   ];
 
   // Generate time options
@@ -211,7 +254,10 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
             customerId: c.customerId || c.id, // Use customerId from API response
             customerName: c.customerName || c.name,
             address: c.address,
-            email: c.email
+            email: c.email,
+            telephone: c.telephone,
+            tin: c.tin,
+            ama: c.ama
           }))
         : [];
       
@@ -288,7 +334,7 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
   async function loadAppointments() {
     const dateStr = selectedDate.toISOString().split("T")[0];
     try {
-      const data = await apiService.getAppointments({
+      const data = await apiService.getAppointmentsWithPricing({
         dateFrom: dateStr,
         dateTo: dateStr,
         technicianId: selectedTech
@@ -308,6 +354,31 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
       console.error("❌ Failed to load appointments:", error);
       showAlert(i18n.t("common.error"), i18n.t("admin.schedule.appointments.loadError") || "Failed to load appointments");
     }
+  }
+
+  function parseDecimalInput(value) {
+    if (value === null || value === undefined || value === "") return null;
+    const normalized = String(value).replace(",", ".");
+    const number = Number(normalized);
+    return Number.isFinite(number) ? number : null;
+  }
+
+  function roundMoney(value) {
+    return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+  }
+
+  function buildVatPricePayload(netValue, vatValue) {
+    const netPrice = roundMoney(parseDecimalInput(netValue) || 0);
+    const vatPercent = roundMoney(parseDecimalInput(vatValue) || 0);
+    const vatAmount = roundMoney(netPrice * (vatPercent / 100));
+    const grossPrice = roundMoney(netPrice + vatAmount);
+
+    return {
+      serviceNetPrice: netPrice,
+      serviceVatPercent: vatPercent,
+      serviceVatAmount: vatAmount,
+      servicePrice: grossPrice,
+    };
   }
 
   async function addCustomerToSchedule(customerId) {
@@ -334,14 +405,50 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
 
     if (!time.trim()) return showAlert(i18n.t("common.error"), i18n.t("admin.schedule.addCustomer.noTime") || "Please enter appointment time");
     
-    // 🚨 CRITICAL FIX: Require price for ALL service types
-    if (!servicePrice || isNaN(servicePrice) || Number(servicePrice) <= 0) {
-      return showAlert(i18n.t("admin.schedule.servicePrice.title") || "Invalid Price", i18n.t("admin.schedule.servicePrice.invalid") || "Please enter a valid service price (greater than 0).");
+    const normalizedPrice = servicePrice.replace(",", ".").trim();
+
+    if (!normalizedPrice || normalizedPrice === "." || normalizedPrice.endsWith(".")) {
+      return showAlert(
+        i18n.t("admin.schedule.servicePrice.title") || "Invalid Price",
+        i18n.t("admin.schedule.servicePrice.invalidFormat") || "Enter a valid price (e.g. 40,05)"
+      );
     }
-    
+
+    const price = parseFloat(normalizedPrice);
+
+    if (isNaN(price) || price <= 0) {
+      return showAlert(
+        i18n.t("admin.schedule.servicePrice.title") || "Invalid Price",
+        i18n.t("admin.schedule.servicePrice.invalid") || "Price must be greater than 0"
+      );
+    }
+
+    const normalizedVatPercent = serviceVatPercent.replace(",", ".").trim();
+
+    if (!normalizedVatPercent || normalizedVatPercent === "." || normalizedVatPercent.endsWith(".")) {
+      return showAlert(
+        i18n.t("admin.schedule.serviceVat.title") || "Invalid VAT",
+        i18n.t("admin.schedule.serviceVat.invalidFormat") || "Enter a valid VAT percentage (e.g. 24 or 13,5)"
+      );
+    }
+
+    const vatPercent = parseFloat(normalizedVatPercent);
+
+    if (isNaN(vatPercent) || vatPercent < 0) {
+      return showAlert(
+        i18n.t("admin.schedule.serviceVat.title") || "Invalid VAT",
+        i18n.t("admin.schedule.serviceVat.invalid") || "VAT must be 0 or greater"
+      );
+    }
+
+    const pricePayload = buildVatPricePayload(normalizedPrice, normalizedVatPercent);
+
     if (!serviceType) return showAlert(i18n.t("common.error"), i18n.t("admin.schedule.addCustomer.noServiceType") || "Please select a service type");
 
-    if (serviceType === "myocide" && !complianceValidUntil) {
+    if (
+      (serviceType === "myocide" || serviceType === "certificate") &&
+      !complianceValidUntil
+    ) {
       showAlert(
         i18n.t("admin.schedule.compliance.missing") || "Missing compliance date",
         i18n.t("admin.schedule.compliance.requiredForMyocide") || "Compliance valid-until date is required for Myocide services."
@@ -403,7 +510,7 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
         appointmentTime: time.trim(),
         serviceType,
         appointmentCategory,
-        servicePrice: Number(servicePrice),
+        ...pricePayload,
         status: "scheduled",
         ...(complianceValidUntil && {
           compliance_valid_until: complianceValidUntil
@@ -431,6 +538,8 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
       } else if (serviceType === "myocide") {
         // ✅ Also for myocide, set otherPestName
         payload.otherPestName = i18n.t("admin.schedule.serviceType.myocide.label") || "Myocide Service";
+      } else if (serviceType === "certificate") {
+        payload.otherPestName = i18n.t("admin.schedule.serviceType.certificate.label") || "Certification Service";
       }
   
       const res = await apiService.createAppointment(payload);
@@ -448,6 +557,8 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
       setDisinfectionDetails("");
       setSpecialServiceSubtype(null);
       setOtherPestName("");
+      setServicePrice("");
+      setServiceVatPercent("24");
       
     } catch (err) {
       console.error("Error creating appointment:", err);
@@ -640,7 +751,81 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
     setEditOtherPestName(appointment.otherPestName || appointment.other_pest_name || '');
     setEditInsecticideDetails(appointment.insecticideDetails || appointment.insecticide_details || '');
     setEditDisinfectionDetails(appointment.disinfection_details || '');
-    setEditServicePrice(appointment.servicePrice?.toString() || appointment.service_price?.toString() || '');
+
+    const storedNetPrice =
+      appointment.serviceNetPrice ??
+      appointment.service_net_price ??
+      appointment.netPrice ??
+      appointment.net_price ??
+      null;
+
+    const storedGrossPrice =
+      appointment.servicePrice ??
+      appointment.service_price ??
+      null;
+
+    const storedVatPercent =
+      appointment.serviceVatPercent ??
+      appointment.service_vat_percent ??
+      appointment.vatPercent ??
+      appointment.vat_percent ??
+      null;
+
+    const storedVatAmount =
+      appointment.serviceVatAmount ??
+      appointment.service_vat_amount ??
+      appointment.vatAmount ??
+      appointment.vat_amount ??
+      null;
+
+    let existingNetPrice = parseDecimalInput(storedNetPrice);
+    let existingVatPercent = parseDecimalInput(storedVatPercent);
+    const existingGrossPrice = parseDecimalInput(storedGrossPrice);
+    const existingVatAmount = parseDecimalInput(storedVatAmount);
+
+    // Some appointment responses expose only gross price plus VAT information.
+    // Reconstruct the net price so the edit field always shows the originally set value.
+    if (existingNetPrice === null && existingGrossPrice !== null) {
+      if (existingVatAmount !== null) {
+        existingNetPrice = roundMoney(existingGrossPrice - existingVatAmount);
+      } else if (existingVatPercent !== null && existingVatPercent > -100) {
+        existingNetPrice = roundMoney(
+          existingGrossPrice / (1 + existingVatPercent / 100)
+        );
+      } else {
+        // Backward compatibility for appointments that only stored one price.
+        existingNetPrice = existingGrossPrice;
+      }
+    }
+
+    // Reconstruct the VAT percentage when only net/gross or VAT amount is returned.
+    if (
+      existingVatPercent === null &&
+      existingNetPrice !== null &&
+      existingNetPrice > 0
+    ) {
+      if (existingVatAmount !== null) {
+        existingVatPercent = roundMoney(
+          (existingVatAmount / existingNetPrice) * 100
+        );
+      } else if (existingGrossPrice !== null) {
+        existingVatPercent = roundMoney(
+          ((existingGrossPrice - existingNetPrice) / existingNetPrice) * 100
+        );
+      }
+    }
+
+    setEditServicePrice(
+      existingNetPrice !== null
+        ? existingNetPrice.toString()
+        : ""
+    );
+
+    setEditServiceVatPercent(
+      existingVatPercent !== null
+        ? existingVatPercent.toString()
+        : ""
+    );
     setEditAppointmentCategory(appointment.appointmentCategory || appointment.appointment_category || 'first_time');
     setEditComplianceValidUntil(appointment.complianceValidUntil || appointment.compliance_valid_until || '');
     
@@ -713,12 +898,52 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
     
     try {
       // Validate required fields
-      if (!editServicePrice || isNaN(editServicePrice) || Number(editServicePrice) <= 0) {
-        showAlert(i18n.t("admin.schedule.servicePrice.title") || "Invalid Price", i18n.t("admin.schedule.servicePrice.invalid") || "Please enter a valid service price (greater than 0).");
+      const normalizedPrice = editServicePrice.replace(",", ".").trim();
+
+      if (!normalizedPrice || normalizedPrice === "." || normalizedPrice.endsWith(".")) {
+        showAlert(
+          i18n.t("admin.schedule.servicePrice.title") || "Invalid Price",
+          i18n.t("admin.schedule.servicePrice.invalidFormat") || "Enter a valid price (e.g. 40,05)"
+        );
         setProcessing(false);
         return;
       }
-      
+
+      const price = parseFloat(normalizedPrice);
+
+      if (isNaN(price) || price <= 0) {
+        showAlert(
+          i18n.t("admin.schedule.servicePrice.title") || "Invalid Price",
+          i18n.t("admin.schedule.servicePrice.invalid") || "Price must be greater than 0"
+        );
+        setProcessing(false);
+        return;
+      }
+
+      const normalizedVatPercent = editServiceVatPercent.replace(",", ".").trim();
+
+      if (!normalizedVatPercent || normalizedVatPercent === "." || normalizedVatPercent.endsWith(".")) {
+        showAlert(
+          i18n.t("admin.schedule.serviceVat.title") || "Invalid VAT",
+          i18n.t("admin.schedule.serviceVat.invalidFormat") || "Enter a valid VAT percentage (e.g. 24 or 13,5)"
+        );
+        setProcessing(false);
+        return;
+      }
+
+      const vatPercent = parseFloat(normalizedVatPercent);
+
+      if (isNaN(vatPercent) || vatPercent < 0) {
+        showAlert(
+          i18n.t("admin.schedule.serviceVat.title") || "Invalid VAT",
+          i18n.t("admin.schedule.serviceVat.invalid") || "VAT must be 0 or greater"
+        );
+        setProcessing(false);
+        return;
+      }
+
+      const editPricePayload = buildVatPricePayload(normalizedPrice, normalizedVatPercent);
+
       if (!editTime.trim()) {
         showAlert(i18n.t("common.error"), i18n.t("admin.schedule.editModal.noTime") || "Please select appointment time");
         setProcessing(false);
@@ -731,7 +956,10 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
         return;
       }
       
-      if (editServiceType === "myocide" && !editComplianceValidUntil) {
+      if (
+        (editServiceType === "myocide" || editServiceType === "certificate") &&
+        !editComplianceValidUntil
+      ) {
         showAlert(i18n.t("admin.schedule.compliance.missing") || "Missing compliance date", i18n.t("admin.schedule.compliance.requiredForMyocide") || "Compliance valid-until date is required for Myocide services.");
         setProcessing(false);
         return;
@@ -751,7 +979,7 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
       
       // Build the update payload
       const payload = {
-        servicePrice: Number(editServicePrice),
+        ...editPricePayload,
         appointmentCategory: editAppointmentCategory,
         serviceType: editServiceType,
         specialServiceSubtype: editSpecialServiceSubtype,
@@ -775,6 +1003,8 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
           : specialServiceSubtypes.find(s => s.id === editSpecialServiceSubtype)?.label || editSpecialServiceSubtype;
       } else if (editServiceType === "myocide") {
         payload.otherPestName = i18n.t("admin.schedule.serviceType.myocide.label") || "Myocide Service";
+      } else if (editServiceType === "certificate") {
+        payload.otherPestName = i18n.t("admin.schedule.serviceType.certificate.label") || "Certification Service";
       }
       
       const result = await apiService.updateAppointment(appointmentIdToUpdate, payload);
@@ -783,7 +1013,7 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
         await loadAppointments();
         
         // Verify the change was applied
-        const updatedAppointments = await apiService.getAppointments({
+        const updatedAppointments = await apiService.getAppointmentsWithPricing({
           dateFrom: selectedDate.toISOString().split("T")[0],
           dateTo: selectedDate.toISOString().split("T")[0],
           technicianId: selectedTech
@@ -815,6 +1045,7 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
     setEditInsecticideDetails("");
     setEditDisinfectionDetails("");
     setEditServicePrice("");
+    setEditServiceVatPercent("");
     setEditAppointmentCategory("first_time");
     setEditComplianceValidUntil("");
     setEditTime("");
@@ -920,6 +1151,8 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
 
   // Get selected technician name
   const selectedTechnicianName = technicians.find(t => t.id === selectedTech)?.name || i18n.t("admin.schedule.technician.select") || "Select Technician";
+  const filteredCustomersForAdd = filterCustomersBySearch(customers, customerSearch);
+  const customerSearchCopy = getCustomerSearchCopy();
 
   if (loading) {
     return (
@@ -1427,10 +1660,36 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
             style={styles.detailsInput}
             placeholder={i18n.t("admin.schedule.servicePrice.placeholder")}
             placeholderTextColor="#999"
-            keyboardType="numeric"
+            keyboardType="decimal-pad"
             value={servicePrice}
             onChangeText={setServicePrice}
           />
+        </View>
+
+        {/* VAT */}
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionTitleContainer}>
+            <MaterialIcons name="percent" size={20} color="#2c3e50" />
+            <Text style={styles.sectionTitle}>
+              {i18n.t("admin.schedule.serviceVat.title") || "VAT %"}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.detailsContainer}>
+          <TextInput
+            style={styles.detailsInput}
+            placeholder={i18n.t("admin.schedule.serviceVat.placeholder") || "e.g. 24"}
+            placeholderTextColor="#999"
+            keyboardType="decimal-pad"
+            value={serviceVatPercent}
+            onChangeText={setServiceVatPercent}
+          />
+
+          <Text style={{ marginTop: 8, fontSize: 14, fontWeight: "600", color: "#2c3e50" }}>
+            {(i18n.t("admin.schedule.servicePrice.totalWithVat") || "Total with VAT")}: €
+            {buildVatPricePayload(servicePrice, serviceVatPercent).servicePrice.toFixed(2)}
+          </Text>
         </View>
 
         {/* TODAY'S APPOINTMENTS */}
@@ -1484,7 +1743,7 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
                     </View>
                     <View style={{ flexDirection: "row", gap: 8 }}>
                       {/* Edit Button - Only show for non-completed, non-cancelled appointments */}
-                      {!isCompletedOrCancelled && (item.serviceType === 'insecticide' || item.serviceType === 'disinfection' || item.serviceType === 'special' || item.serviceType === 'myocide') && (
+                      {!isCompletedOrCancelled && (item.serviceType === 'insecticide' || item.serviceType === 'disinfection' || item.serviceType === 'special' || item.serviceType === 'myocide' || item.serviceType === 'certificate') && (
                         <TouchableOpacity
                           style={styles.editButton}
                           onPress={() => handleEditAppointment(item)}
@@ -1570,7 +1829,12 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
         {/* Customer Dropdown Button */}
         <TouchableOpacity
           style={styles.customerDropdownButton}
-          onPress={() => setShowCustomerDropdown(!showCustomerDropdown)}
+          onPress={() => {
+            if (showCustomerDropdown) {
+              setCustomerSearch("");
+            }
+            setShowCustomerDropdown(!showCustomerDropdown);
+          }}
           activeOpacity={0.7}
         >
           <View style={styles.dropdownContent}>
@@ -1591,17 +1855,44 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
         {/* Customer Dropdown Options */}
         {showCustomerDropdown && (
           <View style={styles.customerDropdownOptions}>
+            <View style={styles.customerSearchContainer}>
+              <MaterialIcons name="search" size={20} color="#666" />
+              <TextInput
+                style={styles.customerSearchInput}
+                placeholder={customerSearchCopy.placeholder}
+                placeholderTextColor="#999"
+                value={customerSearch}
+                onChangeText={setCustomerSearch}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {!!customerSearch && (
+                <TouchableOpacity
+                  style={styles.customerSearchClearButton}
+                  onPress={() => setCustomerSearch("")}
+                  activeOpacity={0.7}
+                >
+                  <MaterialIcons name="close" size={18} color="#666" />
+                </TouchableOpacity>
+              )}
+            </View>
+
             <ScrollView 
               style={styles.customerOptionList}
               showsVerticalScrollIndicator={true}
               nestedScrollEnabled={true}
+              keyboardShouldPersistTaps="handled"
             >
-              {customers.length === 0 ? (
+              {filteredCustomersForAdd.length === 0 ? (
                 <View style={styles.customerOptionEmpty}>
-                  <Text style={styles.customerOptionEmptyText}>{i18n.t("admin.schedule.addCustomer.noCustomers")}</Text>
+                  <Text style={styles.customerOptionEmptyText}>
+                    {customerSearch.trim()
+                      ? customerSearchCopy.noResults
+                      : i18n.t("admin.schedule.addCustomer.noCustomers")}
+                  </Text>
                 </View>
               ) : (
-                customers.map((item) => (
+                filteredCustomersForAdd.map((item) => (
                   <TouchableOpacity
                     key={item.customerId}
                     style={[
@@ -1611,6 +1902,7 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
                     onPress={() => {
                       setSelectedCustomerForAdd(item.customerId);
                       setShowCustomerDropdown(false);
+                      setCustomerSearch("");
                     }}
                   >
                     <View style={styles.customerOptionContent}>
@@ -1919,13 +2211,37 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
                     <MaterialIcons name="euro" size={20} color="#666" style={styles.inputIcon} />
                     <TextInput
                       style={styles.formInput}
-                      keyboardType="number-pad"
+                      keyboardType="decimal-pad"
                       placeholder="e.g. 80"
                       value={editServicePrice}
                       onChangeText={setEditServicePrice}
                       placeholderTextColor="#999"
                     />
                   </View>
+                </View>
+
+                {/* VAT */}
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>
+                    {i18n.t("admin.schedule.serviceVat.title") || "VAT %"} <Text style={styles.requiredStar}>*</Text>
+                  </Text>
+
+                  <View style={styles.inputWithIcon}>
+                    <MaterialIcons name="percent" size={20} color="#666" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.formInput}
+                      keyboardType="decimal-pad"
+                      placeholder="e.g. 24"
+                      value={editServiceVatPercent}
+                      onChangeText={setEditServiceVatPercent}
+                      placeholderTextColor="#999"
+                    />
+                  </View>
+
+                  <Text style={{ marginTop: 8, fontSize: 14, fontWeight: "600", color: "#2c3e50" }}>
+                    {(i18n.t("admin.schedule.servicePrice.totalWithVat") || "Total with VAT")}: €
+                    {buildVatPricePayload(editServicePrice, editServiceVatPercent).servicePrice.toFixed(2)}
+                  </Text>
                 </View>
 
                 {/* APPOINTMENT CATEGORY */}
@@ -1986,23 +2302,30 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
                   )}
                 </View>
 
-                {/* COMPLIANCE - Required for Myocide, Optional for others */}
+                {/* COMPLIANCE - Required for Myocide and Certificate, optional for others */}
                 <View style={styles.formGroup}>
                   <Text style={styles.formLabel}>
-                    {i18n.t("admin.schedule.editModal.complianceValidUntil")} {editServiceType === 'myocide' && <Text style={styles.requiredStar}>*</Text>}
+                    {i18n.t("admin.schedule.editModal.complianceValidUntil")}{" "}
+                    {(editServiceType === "myocide" || editServiceType === "certificate") && (
+                      <Text style={styles.requiredStar}>*</Text>
+                    )}
                   </Text>
                   <View style={styles.inputWithIcon}>
                     <MaterialIcons name="verified" size={20} color="#666" style={styles.inputIcon} />
                     <TextInput
                       style={styles.formInput}
-                      placeholder={editServiceType === 'myocide' ? i18n.t("admin.schedule.editModal.complianceRequired") : i18n.t("admin.schedule.editModal.complianceOptional")}
+                      placeholder={
+                        editServiceType === "myocide" || editServiceType === "certificate"
+                          ? i18n.t("admin.schedule.editModal.complianceRequired")
+                          : i18n.t("admin.schedule.editModal.complianceOptional")
+                      }
                       value={editComplianceValidUntil}
                       onChangeText={setEditComplianceValidUntil}
                       placeholderTextColor="#999"
                     />
                   </View>
                   <Text style={styles.helpText}>
-                    {editServiceType === 'myocide' 
+                    {editServiceType === "myocide" || editServiceType === "certificate"
                       ? i18n.t("admin.schedule.compliance.requiredForMyocide")
                       : i18n.t("admin.schedule.editModal.complianceOptional")}
                   </Text>
@@ -3693,6 +4016,28 @@ customerDropdownOptions: {
   shadowOpacity: 0.1,
   shadowRadius: 8,
   elevation: 5,
+},
+customerSearchContainer: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  margin: 12,
+  marginBottom: 4,
+  paddingHorizontal: 12,
+  borderWidth: 1,
+  borderColor: '#e9ecef',
+  borderRadius: 10,
+  backgroundColor: '#f8f9fa',
+},
+customerSearchInput: {
+  flex: 1,
+  paddingVertical: 11,
+  paddingHorizontal: 10,
+  fontSize: 15,
+  color: '#2c3e50',
+  fontFamily: 'System',
+},
+customerSearchClearButton: {
+  padding: 4,
 },
 customerOption: {
   flexDirection: 'row',

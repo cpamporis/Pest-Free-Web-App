@@ -107,6 +107,9 @@ export default function SwipeableVisitRow({
     if (typeLower.includes('special')) {
       return i18n.t("components.swipeableVisitRow.serviceTypes.special");
     }
+    if (typeLower.includes('certificate')) {
+      return i18n.t("components.swipeableVisitRow.serviceTypes.certificate");
+    }
     
     return i18n.t("components.swipeableVisitRow.serviceTypes.myocide"); 
   };
