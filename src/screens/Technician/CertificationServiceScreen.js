@@ -1,4 +1,5 @@
-// MyocideScreen.js - Desktop
+// CertificationServiceScreen.js - Test iOS
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   View,
   Text,
@@ -12,10 +13,14 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Keyboard,
-  TouchableWithoutFeedback,
+  Modal,
+  findNodeHandle,
 } from "react-native";
-import { PanGestureHandler, PinchGestureHandler } from "react-native-gesture-handler";
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import {
+  PanGestureHandler,
+  PinchGestureHandler,
+  Swipeable,
+} from "react-native-gesture-handler";
 import Animated from "react-native-reanimated";
 import { formatTime } from "../../utils/timeUtils";
 import apiService, { API_BASE_URL } from "../../services/apiService";
@@ -27,6 +32,8 @@ import { launchImageLibrary, launchCamera } from "react-native-image-picker";
 import { SafeAreaView } from "react-native-safe-area-context";
 import PheromoneTrapForm from "../../components/PheromoneTrapForm";
 import i18n from "../../services/i18n";
+import ChemicalsDropdown from "../../components/ChemicalsDropdown";
+import { MaterialIcons } from "@expo/vector-icons";
 
 // Real code after imports
 const { width: deviceWidth } = Dimensions.get("window");
@@ -45,6 +52,25 @@ const getStationLabel = (stationType) => {
     case "BS":
     default:
       return i18n.t("technician.myocide.stationTypes.baitStation");
+  }
+};
+
+const getStationColor = (type, isCompleted) => {
+  if (isCompleted) return "#bdbdbd";
+
+  switch (type) {
+    case "BS":
+      return "#1f9c8b";
+    case "RM":
+      return "#5a5a5a";
+    case "ST":
+      return "#0c6b5e";
+    case "LT":
+      return "#6d7e87";
+    case "PT":
+      return "#8a6bbf"; // pick any distinct color you like
+    default:
+      return "#1f9c8b";
   }
 };
 
@@ -67,25 +93,6 @@ const calculateImageLayout = (containerW, containerH, imageW, imageH) => {
   return { width, height, offsetX, offsetY };
 };
 
-const getStationColor = (type, isCompleted) => {
-  if (isCompleted) return "#bdbdbd";
-
-  switch (type) {
-    case "BS":
-      return "#1f9c8b";
-    case "RM":
-      return "#5a5a5a";
-    case "ST":
-      return "#0c6b5e";
-    case "LT":
-      return "#6d7e87";
-    case "PT":
-      return "#8a6bbf"; // pick any distinct color you like
-    default:
-      return "#1f9c8b";
-  }
-};
-
 // ---- Marker label layout helpers ----
 const getMarkerLabel = (st) => `${st.type || "BS"}${st.id}`;
 
@@ -100,7 +107,7 @@ const markAppointmentCompleted = async (appointmentId, visitId, sessionRef) => {
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(appointmentId);
     
     if (isUUID && visitId) { // Make sure visitId exists
-
+      
       const updateResult = await apiService.updateAppointment({
         id: appointmentId,
         status: "completed",
@@ -148,7 +155,6 @@ function MapScreen({ customer, onBack, session, technician, onGenerateReport }) 
   const [sessionVisitId, setSessionVisitId] = useState(
     session?.visitId ?? null
   );
-  
   const [selectedMap, setSelectedMap] = useState(null);
   const [stations, setStations] = useState([]);
   const [selectedStation, setSelectedStation] = useState(null); 
@@ -157,6 +163,12 @@ function MapScreen({ customer, onBack, session, technician, onGenerateReport }) 
   const [addingStation, setAddingStation] = useState(false);
   const [removingStation, setRemovingStation] = useState(false);
   const [scale, setScale] = useState(1);
+  const [imageLayout, setImageLayout] = useState({
+    width: 0,
+    height: 0,
+    offsetX: 0,
+    offsetY: 0
+  });
   const [offsetX, setOffsetX] = useState(0);
   const [offsetY, setOffsetY] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -171,61 +183,20 @@ function MapScreen({ customer, onBack, session, technician, onGenerateReport }) 
   const [hasViewedReport, setHasViewedReport] = useState(false);
   const [hasGeneratedReport, setHasGeneratedReport] = useState(false);
   const [notes, setNotes] = useState('');
+  const [selectedChemicals, setSelectedChemicals] = useState([]);
+  const [treatedAreas, setTreatedAreas] = useState([]);
+  const [areaNameInput, setAreaNameInput] = useState("");
+  const [areaModalVisible, setAreaModalVisible] = useState(false);
+  const [activeAreaId, setActiveAreaId] = useState(null);
+  const [areaNotes, setAreaNotes] = useState("");
   const [showPhotoViewer, setShowPhotoViewer] = useState(false);
   const [reportImages, setReportImages] = useState([]);
   const [existingImages, setExistingImages] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const removeNewImage = (index) => {
     setReportImages(prev => prev.filter((_, i) => i !== index));
   };
-  const removeExistingImage = (index) => {
-    setExistingImages(prev => prev.filter((_, i) => i !== index));
-  };
-  const [imageLayout, setImageLayout] = useState({
-    width: 0,
-    height: 0,
-    offsetX: 0,
-    offsetY: 0
-  });
-  const totalPhotos = useMemo(() => {
-    return (reportImages?.length || 0) + (existingImages?.length || 0);
-  }, [reportImages, existingImages]);
-  const [customerWithMaps, setCustomerWithMaps] = useState(null);
-  const [loadingCustomer, setLoadingCustomer] = useState(false);
-  const normalizedCustomer = useMemo(() => {
-    if (!customer) return null;
-
-    return {
-      customerId: customer.customerId ?? customer.id ?? null,
-      customerName: customer.customerName ?? customer.name ?? "",
-      address: customer.address ?? "",
-      email: customer.email ?? "",
-      maps: Array.isArray(customer.maps) ? customer.maps : []
-    };
-  }, [customer]);
-  const customerMaps = useMemo(() => {
-    if (customerWithMaps && Array.isArray(customerWithMaps.maps)) {
-      return customerWithMaps.maps;
-    }
-    if (normalizedCustomer && Array.isArray(normalizedCustomer.maps)) {
-      return normalizedCustomer.maps;
-    }
-    return [];
-  }, [customerWithMaps, normalizedCustomer]);
-
-  const buildImageUrl = (imageName) => {
-    if (!imageName) return null;
-
-    let base = API_BASE_URL.replace("/api", "");
-
-    // 🔥 CRITICAL: Web must use https if your site is https
-    if (Platform.OS === "web") {
-      base = base.replace("http://", "https://");
-    }
-
-    return `${base}/uploads/${imageName}`;
-  };
-
   const showAlert = (title, message, buttons) => {
     if (Platform.OS === 'web') {
       // For web/desktop, use window.confirm for simple confirmations
@@ -260,12 +231,131 @@ function MapScreen({ customer, onBack, session, technician, onGenerateReport }) 
     }
   };
 
+  const removeExistingImage = (index) => {
+    setExistingImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const showSubscription = Keyboard.addListener(showEvent, () => {
+      setKeyboardVisible(true);
+    });
+    const hideSubscription = Keyboard.addListener(hideEvent, () => {
+      setKeyboardVisible(false);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
+  const dismissKeyboardWhenTouchingOutsideInput = (event) => {
+    const focusedInput = TextInput.State.currentlyFocusedInput?.();
+    if (!focusedInput) return;
+
+    const focusedInputHandle = findNodeHandle(focusedInput);
+
+    if (event.nativeEvent.target !== focusedInputHandle) {
+      Keyboard.dismiss();
+    }
+  };
+
+  const totalPhotos = useMemo(() => {
+  return (reportImages?.length || 0) + (existingImages?.length || 0);
+}, [reportImages, existingImages]);
+
+  const addTreatedArea = () => {
+    const name = areaNameInput.trim();
+    if (!name) return;
+    setTreatedAreas(prev => [
+      ...prev,
+      { id: `area_${Date.now()}`, name, chemicals: [], areaNotes: "" }
+    ]);
+    setAreaNameInput("");
+  };
+
+  const openArea = (area) => {
+    setActiveAreaId(area.id);
+    setAreaNotes(area.areaNotes || "");
+    setAreaModalVisible(true);
+  };
+
+  const addChemicalToActiveArea = (chemical) => {
+    const name = typeof chemical === "string"
+      ? chemical
+      : chemical?.name || chemical?.chemicalName;
+    if (!name || !activeAreaId) return;
+
+    setTreatedAreas(prev => prev.map(area => {
+      if (area.id !== activeAreaId) return area;
+      const chemicals = Array.isArray(area.chemicals) ? area.chemicals : [];
+      if (chemicals.some(c => c.name === name)) return area;
+      return {
+        ...area,
+        chemicals: [...chemicals, { name, concentration: "", volume: "" }]
+      };
+    }));
+  };
+
+  const updateAreaChemical = (index, field, value) => {
+    setTreatedAreas(prev => prev.map(area => {
+      if (area.id !== activeAreaId) return area;
+      const chemicals = [...(area.chemicals || [])];
+      chemicals[index] = { ...chemicals[index], [field]: value };
+      return { ...area, chemicals };
+    }));
+  };
+
+  const saveActiveArea = () => {
+    setTreatedAreas(prev => prev.map(area =>
+      area.id === activeAreaId ? { ...area, areaNotes } : area
+    ));
+    setAreaModalVisible(false);
+  };
+
+  const normalizedCustomer = useMemo(() => {
+    if (!customer) return null;
+
+    return {
+      customerId: customer.customerId ?? customer.id ?? null,
+      customerName: customer.customerName ?? customer.name ?? "",
+      address: customer.address ?? "",
+      email: customer.email ?? "",
+      tin: customer.tin ?? "",
+      ama: customer.ama ?? "",
+      maps: Array.isArray(customer.maps) ? customer.maps : []
+    };
+  }, [customer]);
+
+  const [customerWithMaps, setCustomerWithMaps] = useState(null);
+  const [loadingCustomer, setLoadingCustomer] = useState(false);
+  const customerMaps = useMemo(() => {
+    if (customerWithMaps && Array.isArray(customerWithMaps.maps)) {
+      return customerWithMaps.maps;
+    }
+    if (normalizedCustomer && Array.isArray(normalizedCustomer.maps)) {
+      return normalizedCustomer.maps;
+    }
+    return [];
+  }, [customerWithMaps, normalizedCustomer]);
+
+
+
+
+
+  
   // TIMER STATES
   const [timerActive, setTimerActive] = useState(false);
   const [startTime, setStartTime] = useState(null);
   const [elapsedTime, setElapsedTime] = useState(0);
   const timerRef = useRef(null);
   const dragStartRef = useRef({});
+  const webImageNaturalSizeRef = useRef({ width: 0, height: 0 });
   const [showSaveCancel, setShowSaveCancel] = useState(false);
   const [workStarted, setWorkStarted] = useState(false);
   const [imageError, setImageError] = useState(false);
@@ -275,13 +365,7 @@ function MapScreen({ customer, onBack, session, technician, onGenerateReport }) 
   const [serviceStarted, setServiceStarted] = useState(false);
   const [serviceCompleted, setServiceCompleted] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const SERVER_BASE_URL = API_BASE_URL.replace("/api", ""); // http://192.168.1.71:3000
-  const isAppointmentSession =
-    Boolean(session?.fromAppointment) &&
-    session?.serviceType === "myocide" &&
-    session?.status !== "completed";
-  
-
+  const SERVER_BASE_URL = API_BASE_URL.replace("/api", "");
   const effectiveCustomer = customerWithMaps ?? normalizedCustomer;
   
   // Log the first map details
@@ -374,11 +458,11 @@ function MapScreen({ customer, onBack, session, technician, onGenerateReport }) 
     };
   }, []);
 
-
   // In your useEffect where you load customer data:
   useEffect(() => {
     const loadCustomerData = async () => {
       if (!normalizedCustomer?.customerId) return;
+
       setLoadingCustomer(true);
       
       try {
@@ -396,7 +480,7 @@ function MapScreen({ customer, onBack, session, technician, onGenerateReport }) 
             ? customerData.maps 
             : (customerData.maps === "no maps" ? [] : [])
         };
-
+        
         setCustomerWithMaps(safeCustomer);
         
       } catch (error) {
@@ -421,7 +505,8 @@ useEffect(() => {
         setLoading(true);
         
         // Try getServiceLogByVisitId instead of getVisitReport
-        const response = await apiService.getServiceLogByVisitId(sessionVisitId);
+        const response = await apiService.getVisitReport(sessionVisitId);
+        
         // Check different possible response structures
         let reportData = null;
         
@@ -464,15 +549,17 @@ useEffect(() => {
             parsedImages = [];
           }
           setExistingImages(parsedImages);
+
+          const chemicals = reportData.chemicals_used || reportData.chemicalsUsed || [];
+          const areas = reportData.treated_areas || reportData.treatedAreas || [];
+          setSelectedChemicals(Array.isArray(chemicals) ? chemicals : []);
+          setTreatedAreas(Array.isArray(areas) ? areas : []);
           
           // Check where stations are stored - could be in stations or treated_areas
           let stationsArray = [];
           
           if (reportData.stations && reportData.stations.length > 0) {
             stationsArray = reportData.stations;
-          } else if (reportData.treated_areas && reportData.treated_areas.length > 0) {
-            // For myocide, stations might be in treated_areas
-            stationsArray = reportData.treated_areas;
           }
           
           // Load stations data
@@ -537,15 +624,6 @@ useEffect(() => {
 // Use customerWithMaps instead of customer
 
   const startTimer = () => {
-
-    if (!isAppointmentSession) {
-      showAlert(
-        i18n.t("technician.common.info") || "No Active Appointment",
-        i18n.t("technician.myocide.alerts.startServiceRequired") || "Start Work is only available when opening a scheduled Myocide appointment."
-      );
-      return;
-    }
-    
     if (timerActive) return;
 
     // Clear any old data when starting new work
@@ -589,7 +667,7 @@ useEffect(() => {
     }
     onGenerateReport({
       visitId: sessionVisitId,
-      serviceType: "myocide"
+      serviceType: "certificate"
     });
 
     // ✅ NOW hide the button
@@ -623,9 +701,10 @@ useEffect(() => {
   };
 
 
-// In MyocideScreen.js - Update the handleSaveAll function
+// In CertificationServiceScreen.js - Update the handleSaveAll function
 
 const handleSaveAll = async () => {
+  
   // Transform stations to the format expected by the backend
   const stationsToSend = loggedStations.map(station => ({
     station_id: station.stationId,
@@ -653,12 +732,28 @@ const handleSaveAll = async () => {
     insects_captured: station.insectsCaptured,
     damaged: station.damaged
   }));
-  // Check if we have any stations to send
-  if (stationsToSend.length === 0) {
+
+  if (!effectiveCustomer?.tin || !effectiveCustomer?.ama) {
     showAlert(
-      i18n.t("technician.myocide.alerts.noData"),
-      i18n.t("technician.myocide.alerts.noDataMessage"),
+      i18n.t("technician.certificate.missingCustomerData"),
+      i18n.t("technician.certificate.missingCustomerDataMessage"),
       [{ text: i18n.t("technician.common.ok") }]
+    );
+    return;
+  }
+
+  const hasCertificationData =
+    stationsToSend.length > 0 ||
+    selectedChemicals.length > 0 ||
+    treatedAreas.length > 0 ||
+    notes.trim().length > 0 ||
+    reportImages.length > 0 ||
+    existingImages.length > 0;
+
+  if (!hasCertificationData) {
+    showAlert(
+      i18n.t("technician.certificate.noData"),
+      i18n.t("technician.certificate.noDataMessage")
     );
     return;
   }
@@ -666,13 +761,13 @@ const handleSaveAll = async () => {
   stopTimer();
 
   // Generate a visitId if not exists
-  const generatedVisitId = sessionVisitId || `myocide_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const generatedVisitId = sessionVisitId || `certificate_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   
   // 🚨 FIX: Convert elapsedTime from milliseconds to seconds
   const durationInSeconds = Math.floor(elapsedTime / 1000);
   
   const visitSummary = {
-    serviceType: "myocide",
+    serviceType: "certificate",
     startTime,
     endTime: Date.now(),
     duration: durationInSeconds,  // Now in seconds, not milliseconds
@@ -706,11 +801,16 @@ const handleSaveAll = async () => {
     visitSummary: {
       ...visitSummary,
       customerId: effectiveCustomer?.customerId,
-      service_type: "myocide"
+      service_type: "certificate"
     },
-    stations: stationsToSend
+    stations: stationsToSend,
+    chemicalsUsed: selectedChemicals,
+    treatedAreas
   })
 );
+
+    formData.append("chemicals_used", JSON.stringify(selectedChemicals));
+    formData.append("treated_areas", JSON.stringify(treatedAreas));
 
     // Add new images - limit to prevent timeout
     const MAX_IMAGES = 5;
@@ -739,11 +839,12 @@ const handleSaveAll = async () => {
 
     // Add existing images as JSON string
     formData.append("existingImages", JSON.stringify(existingImages));
+
     // Show loading indicator
     setSaving(true);
 
     const result = await apiService.submitServiceLog(formData);
-
+    
     if (!result?.success) {
       throw new Error(result?.error || i18n.t("technician.myocide.alerts.saveFailed"));
     }
@@ -938,13 +1039,6 @@ const handleSaveAll = async () => {
       return;
     }
 
-    // For desktop/web, only show gallery option
-    if (Platform.OS === 'web') {
-      pickImagesFromGallery();
-      return;
-    }
-
-    // For mobile, show both camera and gallery
     showAlert(i18n.t("technician.myocide.photos.add"), i18n.t("common.chooseOption") || "Choose source", [
       { text: i18n.t("components.chemicalsDropdown.camera") || "Camera", onPress: captureImages },
       { text: i18n.t("components.chemicalsDropdown.gallery") || "Gallery", onPress: pickImagesFromGallery },
@@ -960,9 +1054,7 @@ const handleSaveAll = async () => {
       return;
     }
 
-    const uri = buildImageUrl(selectedMap.image);
-
-    setCurrentImageUri(uri);
+    setCurrentImageUri(`${SERVER_BASE_URL}/uploads/${selectedMap.image}`);
     setImageError(false);
   }, [selectedMap]);
 
@@ -986,7 +1078,7 @@ const handleSaveAll = async () => {
     getVisitIdFromAppointment();
   }, [session?.appointmentId, session?.status, sessionVisitId]);
 
-  // In MyocideScreen.js - buildMyocideReportContext function
+  // In CertificationServiceScreen.js - buildMyocideReportContext function
   const buildMyocideReportContext = () => {
     if (!sessionVisitId) {
       showAlert(
@@ -1039,8 +1131,9 @@ const handleSaveAll = async () => {
     return `${SERVER_BASE_URL}/uploads/${value}`;
   };
 
-  // In MyocideScreen.js - Update upsertLoggedStation
+  // In CertificationServiceScreen.js - Update upsertLoggedStation
   const upsertLoggedStation = (stationData) => {
+    
     // Ensure stationType is included
     if (!stationData.stationType) {
       stationData.stationType = selectedStation?.type || "BS";
@@ -1075,6 +1168,7 @@ const handleSaveAll = async () => {
         condition: null
       } : {})
     };
+
     setLoggedStations(prev => {
       const index = prev.findIndex(
         s =>
@@ -1107,7 +1201,7 @@ const handleSaveAll = async () => {
     }, 2500);
   };
 
-    // In MyocideScreen.js - Update the isStationCompleted function
+    // In CertificationServiceScreen.js - Update the isStationCompleted function
   const isStationCompleted = (stationId, stationType = "BS") => {
     const foundStation = loggedStations.find(s => 
       s.stationId === stationId && (s.stationType || "BS") === stationType
@@ -1135,6 +1229,7 @@ const handleSaveAll = async () => {
       (foundStation.replacedPheromone !== null && foundStation.replacedPheromone !== undefined) ||
       (foundStation.insectsCaptured !== null && foundStation.insectsCaptured !== undefined && String(foundStation.insectsCaptured).trim() !== "") ||
       (foundStation.damaged !== null && foundStation.damaged !== undefined);
+    
     return hasData;
   };
 
@@ -1163,10 +1258,12 @@ const handleSaveAll = async () => {
         x: st.x,
         y: st.y
       }));
+
       // Save to SQL using new endpoint
       const result = await apiService.saveMapStations(selectedMap.mapId, stationsToSave);
 
-      if (result && result.success) {     
+      if (result && result.success) {
+        
         // Immediately refresh the customer data to see if stations were saved
         try {
           const freshCustomerData = await apiService.getCustomerWithMaps(effectiveCustomer.customerId);
@@ -1305,13 +1402,36 @@ const handleSaveAll = async () => {
     dragStartRef.current = {};
   };
 
+  const handleWebMapLayout = (event) => {
+    const { width: containerWidth, height: containerHeight } =
+      event.nativeEvent.layout || {};
+    const { width: imageWidth, height: imageHeight } =
+      webImageNaturalSizeRef.current;
+
+    if (
+      containerWidth > 0 &&
+      containerHeight > 0 &&
+      imageWidth > 0 &&
+      imageHeight > 0
+    ) {
+      setImageLayout(
+        calculateImageLayout(
+          containerWidth,
+          containerHeight,
+          imageWidth,
+          imageHeight
+        )
+      );
+    }
+  };
+
   const handleStationPress = (station) => {
     const stationType = station.type || "BS";
 
     debugStationData(station.id, stationType);
 
-    // In map-edit mode a click is reserved for removal. Normal editing uses
-    // pointer movement, so releasing a dragged marker does not open its form.
+    // While editing the map, a normal click does nothing. In remove mode,
+    // clicking the device removes it. Dragging is handled by pointer events.
     if (editMode) {
       if (removingStation) {
         if (stationType !== editStationType) return;
@@ -1330,11 +1450,13 @@ const handleSaveAll = async () => {
       return;
     }
 
+    // EDIT MODE (for completed visits)
     if (isEditCompletedVisit) {
       setSelectedStation({ id: station.id, type: stationType });
       return;
     }
 
+    // WORK MODE (timer running for new visits)
     if (workStarted) {
       if (isStationCompleted(station.id, stationType)) {
         const stationLabel = getStationLabel(stationType);
@@ -1390,71 +1512,71 @@ const handleSaveAll = async () => {
   };
   
   const handleUpdateService = async () => {
-  
-  // Ensure technician name is available
-  const technicianName = technician?.name || 
-                        `${technician?.firstName || ''} ${technician?.lastName || ''}`.trim();
-  
-  if (!technicianName) {
-    console.error("❌ Missing technicianName", { technician });
-    showAlert(i18n.t("technician.common.error"), i18n.t("technician.specialServices.errors.missingInfo"));
-    return;
-  }
-  
-  // Transform stations to the format expected by the backend
-  const stationsToSend = loggedStations.map(station => ({
-    station_id: station.stationId,
-    station_number: station.stationId,
-    station_type: station.stationType,
-    consumption: station.consumption,
-    bait_type: station.baitType,
-    capture: station.capture,
-    rodents_captured: station.rodentsCaptured,
-    triggered: station.triggered,
-    replaced_surface: station.replacedSurface,
-    condition: station.condition,
-    access: station.access,
-    dosage_g: station.dosage_g,
-    // LT fields
-    mosquitoes: station.mosquitoes,
-    lepidoptera: station.lepidoptera,
-    drosophila: station.drosophila,
-    flies: station.flies,
-    others: station.others,
-    replace_bulb: station.replaceBulb,
-    // PT fields (NEW)
-    pheromone_type: station.pheromoneType,
-    replaced_pheromone: station.replacedPheromone,
-    insects_captured: station.insectsCaptured,
-    damaged: station.damaged
-  }));
-  
-  if (stationsToSend.length === 0) {
-    showAlert(
-      i18n.t("technician.common.warning"),
-      i18n.t("technician.myocide.alerts.noDataMessage"),
-      [{ text: i18n.t("technician.common.ok") }]
-    );
-    return;
-  }
+    
+    // Ensure technician name is available
+    const technicianName = technician?.name || 
+                          `${technician?.firstName || ''} ${technician?.lastName || ''}`.trim();
+    
+    if (!technicianName) {
+      console.error("❌ Missing technicianName", { technician });
+      showAlert(i18n.t("technician.common.error"), i18n.t("technician.specialServices.errors.missingInfo"));
+      return;
+    }
+    
+    // Transform stations to the format expected by the backend
+    const stationsToSend = loggedStations.map(station => ({
+      station_id: station.stationId,
+      station_number: station.stationId,
+      station_type: station.stationType,
+      consumption: station.consumption,
+      bait_type: station.baitType,
+      capture: station.capture,
+      rodents_captured: station.rodentsCaptured,
+      triggered: station.triggered,
+      replaced_surface: station.replacedSurface,
+      condition: station.condition,
+      access: station.access,
+      dosage_g: station.dosage_g,
+      // LT fields
+      mosquitoes: station.mosquitoes,
+      lepidoptera: station.lepidoptera,
+      drosophila: station.drosophila,
+      flies: station.flies,
+      others: station.others,
+      replace_bulb: station.replaceBulb,
+      // PT fields (NEW)
+      pheromone_type: station.pheromoneType,
+      replaced_pheromone: station.replacedPheromone,
+      insects_captured: station.insectsCaptured,
+      damaged: station.damaged
+    }));
 
-  // Generate visitId if not exists
-  const generatedVisitId = sessionVisitId || `myocide_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  
-  // Calculate duration in seconds
-  const durationInSeconds = Math.floor(elapsedTime / 1000);
-  
-  const visitSummary = {
-    serviceType: "myocide",
-    startTime: startTime || Date.now() - 3600000, // Default to 1 hour ago if not set
-    endTime: Date.now(),
-    duration: durationInSeconds,
-    customerId: effectiveCustomer?.customerId,
-    customerName: effectiveCustomer?.customerName,
-    technicianId: technician?.id,
-    technicianName: technicianName,
-    appointmentId: session?.appointmentId,
-    workType: isEditCompletedVisit ? "Updated Visit" : "Scheduled Appointment",
+    if (!effectiveCustomer?.tin || !effectiveCustomer?.ama) {
+      showAlert(
+        i18n.t("technician.certificate.missingCustomerData"),
+        i18n.t("technician.certificate.missingCustomerDataMessage"),
+        [{ text: i18n.t("technician.common.ok") }]
+      );
+      return;
+    }
+
+    // Generate visitId if not exists
+    const generatedVisitId = sessionVisitId || `certificate_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Calculate duration in seconds
+    const durationInSeconds = Math.floor(elapsedTime / 1000);
+    
+    const visitSummary = {
+      serviceType: "certificate",
+      startTime: startTime || Date.now() - 3600000, // Default to 1 hour ago if not set
+      endTime: Date.now(),
+      duration: durationInSeconds,
+      customerId: effectiveCustomer?.customerId,
+      customerName: effectiveCustomer?.customerName,
+      technicianId: technician?.id,
+      technicianName: technicianName, // Use the variable we created
+      appointmentId: session?.appointmentId,
+      workType: isEditCompletedVisit ? "Updated Visit" : "Scheduled Appointment",
       visitId: generatedVisitId,
       logId: generatedVisitId,
       notes: notes || ''
@@ -1464,51 +1586,38 @@ const handleSaveAll = async () => {
       const formData = new FormData();
 
       formData.append(
-        "data",
-        JSON.stringify({
-          visitSummary: {
-            ...visitSummary,
-            customerId: effectiveCustomer?.customerId,
-            service_type: "myocide"
-          },
-          stations: stationsToSend
-        })
-      );
+  "data",
+  JSON.stringify({
+    visitSummary: {
+      ...visitSummary,
+      customerId: effectiveCustomer?.customerId,
+      service_type: "certificate"
+    },
+    stations: stationsToSend,
+    chemicalsUsed: selectedChemicals,
+    treatedAreas
+  })
+);
 
-      // Add ONLY NEW images (the ones just taken/selected)
-      for (let i = 0; i < reportImages.length; i++) {
-        const img = reportImages[i];
-        if (!img?.uri) continue;
+      formData.append("chemicals_used", JSON.stringify(selectedChemicals));
+      formData.append("treated_areas", JSON.stringify(treatedAreas));
 
-        const name =
-          img.fileName ||
-          img.name ||
-          `photo_${Date.now()}_${i}.jpg`;
-
+      // Add new images
+      reportImages.forEach((img, index) => {
+        if (!img?.uri) return;
+        
+        const uri = Platform.OS === "ios" ? img.uri.replace("file://", "") : img.uri;
+        const name = img.fileName || img.name || `photo_${Date.now()}_${index}.jpg`;
         const type = img.type || "image/jpeg";
+        
+        formData.append("images", {
+          uri,
+          name,
+          type,
+        });
+      });
 
-        if (Platform.OS === "web") {
-          // 🔥 CRITICAL: Convert to Blob for web
-          const response = await fetch(img.uri);
-          const blob = await response.blob();
-
-          formData.append("images", blob, name);
-        } else {
-          const uri =
-            Platform.OS === "ios"
-              ? img.uri.replace("file://", "")
-              : img.uri;
-
-          formData.append("images", {
-            uri,
-            name,
-            type,
-          });
-        }
-      }
-
-      // Add existing images as JSON string (these are the ones already saved)
-      // This will keep all existing images unless they were deleted
+      // Add existing images as JSON string
       formData.append("existingImages", JSON.stringify(existingImages));
 
       setSaving(true);
@@ -1517,7 +1626,7 @@ const handleSaveAll = async () => {
       if (!result?.success) {
         throw new Error(result?.error || i18n.t("technician.myocide.alerts.saveFailed"));
       }
-      
+
       if (result?.visitId) {
         session.visitId = result.visitId;
         setSessionVisitId(result.visitId);
@@ -1530,8 +1639,8 @@ const handleSaveAll = async () => {
           });
         }
       }
-
-      setReportImages([]);
+      
+      // Set service as completed to show Generate Report button
       setServiceCompleted(true);
       setWorkStarted(false);
       setTimerActive(false);
@@ -1603,7 +1712,9 @@ const handleSaveAll = async () => {
     );
   }
 
-  if (!Array.isArray(customerMaps) || customerMaps.length === 0 || !selectedMap) {
+  // Certification may be completed without a map. Keep the normal screen open
+  // and let the certification section below act as the complete service form.
+  if (false && (!Array.isArray(customerMaps) || customerMaps.length === 0 || !selectedMap)) {
     // TEMPORARY DEBUG VIEW - replace the entire return statement
     return (
        <KeyboardAvoidingView
@@ -1692,11 +1803,13 @@ const handleSaveAll = async () => {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 110 : 0}
+      behavior={Platform.OS === "ios" ? "height" : undefined}
+      keyboardVerticalOffset={0}
     >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-        <View style={styles.container}>
+      <View
+        style={styles.container}
+        onTouchStart={dismissKeyboardWhenTouchingOutsideInput}
+      >
           {/* Top Bar with Timer */}
           <View style={styles.topButtons}>
             {editMode ? (
@@ -1726,7 +1839,7 @@ const handleSaveAll = async () => {
             )}
 
             {/* Edit Map Button - Now in the top row */}
-            {!editMode && !workStarted && !timerActive && (
+            {Boolean(selectedMap?.image) && !editMode && !workStarted && !timerActive && (
               <TouchableOpacity 
                 style={styles.editBtnTop} 
                 onPress={() => setEditMode(true)}
@@ -1735,12 +1848,14 @@ const handleSaveAll = async () => {
               </TouchableOpacity>
             )}
 
-            <TouchableOpacity
-              style={styles.chooseMapBtn}
-              onPress={() => setShowMapDropdown(!showMapDropdown)}
-            >
-              <Text style={styles.backBtnText}>{i18n.t("technician.myocide.chooseMap")}</Text>
-            </TouchableOpacity>
+            {customerMaps.length > 0 && (
+              <TouchableOpacity
+                style={styles.chooseMapBtn}
+                onPress={() => setShowMapDropdown(!showMapDropdown)}
+              >
+                <Text style={styles.backBtnText}>{i18n.t("technician.myocide.chooseMap")}</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {showMapDropdown && (
@@ -1756,14 +1871,19 @@ const handleSaveAll = async () => {
               ))}
             </View>
           )}
+
           <ScrollView
             style={{ flex: 1 }}
+            contentContainerStyle={styles.scrollContent}
             maximumZoomScale={4}
             minimumZoomScale={1}
             showsHorizontalScrollIndicator={false}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+            onScrollBeginDrag={Keyboard.dismiss}
           >
+            {selectedMap?.image ? (
             <View style={styles.mapContainer}>
               <PinchGestureHandler
                 enabled={Platform.OS !== "web"}
@@ -1771,15 +1891,20 @@ const handleSaveAll = async () => {
                   setScale(Math.max(1, Math.min(3, e.nativeEvent.scale)))
                 }
               >
-                <Animated.View>
+                <Animated.View
+                  style={
+                    Platform.OS === "web" ? styles.webMapFrame : undefined
+                  }
+                >
                   <TouchableOpacity
                     activeOpacity={1}
                     onPress={handleMapPress}
-                    style={
+                    onLayout={
                       Platform.OS === "web"
-                        ? { position: "relative" }
+                        ? handleWebMapLayout
                         : undefined
                     }
+                    style={Platform.OS === "web" ? styles.webMapStage : null}
                   >
                     {/* Show image only if we have a valid URI and no error */}
                     {currentImageUri && !imageError ? (
@@ -1787,27 +1912,37 @@ const handleSaveAll = async () => {
                         <img
                           src={currentImageUri}
                           draggable={false}
+                          alt=""
                           style={{
+                            position: "absolute",
+                            inset: 0,
                             width: "100%",
                             height: "100%",
                             objectFit: "contain",
                             pointerEvents: "none",
                             userSelect: "none"
                           }}
-                          onLoad={(e) => {
-                            const img = e.target;
+                          onLoad={(event) => {
+                            const image = event.currentTarget;
+                            webImageNaturalSizeRef.current = {
+                              width: image.naturalWidth,
+                              height: image.naturalHeight
+                            };
 
-                            const layout = calculateImageLayout(
-                              img.clientWidth,
-                              img.clientHeight,
-                              img.naturalWidth,
-                              img.naturalHeight
+                            setImageLayout(
+                              calculateImageLayout(
+                                image.clientWidth,
+                                image.clientHeight,
+                                image.naturalWidth,
+                                image.naturalHeight
+                              )
                             );
-
-                            setImageLayout(layout);
                           }}
-                          onError={(e) => {
-                            console.error("❌ Web image failed:", currentImageUri);
+                          onError={() => {
+                            console.error(
+                              "❌ Web image failed:",
+                              currentImageUri
+                            );
                             setImageError(true);
                           }}
                         />
@@ -1816,15 +1951,21 @@ const handleSaveAll = async () => {
                           source={{ uri: currentImageUri }}
                           style={styles.map}
                           resizeMode="contain"
-                          onLayout={(e) => {
-                            const { width, height } = e.nativeEvent.layout;
+                          onLoad={(e) => {
+                            const { width: imgW, height: imgH } =
+                              e.nativeEvent.source;
 
-                            setImageLayout({ width, height });
-                          }}
-                          onLoad={() => console.log("✅ Image loaded:", currentImageUri)}
-                          onError={(e) => {
-                            console.error("❌ Image load failed:", currentImageUri);
-                            setImageError(true);
+                            const containerW = deviceWidth;
+                            const containerH = deviceWidth;
+
+                            setImageLayout(
+                              calculateImageLayout(
+                                containerW,
+                                containerH,
+                                imgW,
+                                imgH
+                              )
+                            );
                           }}
                         />
                       )
@@ -1960,7 +2101,27 @@ const handleSaveAll = async () => {
                 </Animated.View>
               </PinchGestureHandler>
             </View>
-          </ScrollView>
+            ) : (
+              <View
+                style={{
+                  marginHorizontal: 20,
+                  marginTop: 12,
+                  padding: 16,
+                  borderRadius: 12,
+                  backgroundColor: "#eef8f6",
+                  borderWidth: 1,
+                  borderColor: "#b9ddd7"
+                }}
+              >
+                <Text style={{ fontSize: 16, fontWeight: "700", color: "#176f63" }}>
+                  {i18n.t("technician.certificate.noMapInspection")}
+                </Text>
+                <Text style={{ marginTop: 6, color: "#4f625f", lineHeight: 20 }}>
+                  {i18n.t("technician.certificate.noMapOptional") ||
+                    "You can complete the certification using treated areas, chemicals, notes and photos."}
+                </Text>
+              </View>
+            )}
 
           {editMode && (
             <View style={styles.editButtons}>
@@ -2070,6 +2231,82 @@ const handleSaveAll = async () => {
             </View>
           )}
 
+          {/* CERTIFICATION DETAILS — remains available even when no map exists */}
+          {serviceStarted && (
+            <View style={styles.certificationSection}>
+              <Text style={styles.certificationTitle}>
+                {i18n.t("technician.certificate.certificationSection")}
+              </Text>
+
+              <View style={styles.identityCard}>
+                <Text style={styles.identityText}>{i18n.t("customer.tin")}: {effectiveCustomer?.tin || "—"}</Text>
+                <Text style={styles.identityText}>{i18n.t("customer.ama")}: {effectiveCustomer?.ama || "—"}</Text>
+              </View>
+
+              <ChemicalsDropdown
+                selectedChemicals={selectedChemicals}
+                onChemicalsChange={setSelectedChemicals}
+                disabled={!serviceStarted}
+                editable={serviceStarted}
+              />
+
+              <View style={styles.areaAddRow}>
+                <TextInput
+                  style={styles.areaNameInput}
+                  value={areaNameInput}
+                  onChangeText={setAreaNameInput}
+                  placeholder={i18n.t("technician.specialServices.areaPlaceholder")}
+                />
+                <TouchableOpacity style={styles.areaAddButton} onPress={addTreatedArea}>
+                  <Text style={styles.areaAddButtonText}>{i18n.t("technician.specialServices.add")}</Text>
+                </TouchableOpacity>
+              </View>
+
+              {treatedAreas.map(area => (
+                <View key={area.id} style={styles.areaSwipeContainer}>
+                  <Swipeable
+                    friction={2}
+                    rightThreshold={40}
+                    overshootRight={false}
+                    renderRightActions={() => (
+                      <TouchableOpacity
+                        style={styles.areaSwipeDelete}
+                        onPress={() =>
+                          setTreatedAreas(prev =>
+                            prev.filter(item => item.id !== area.id)
+                          )
+                        }
+                      >
+                        <MaterialIcons name="delete-outline" size={24} color="#fff" />
+                        <Text style={styles.areaSwipeDeleteText}>
+                          {i18n.t("common.delete", { defaultValue: "Delete" })}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  >
+                    <TouchableOpacity
+                      style={styles.areaItem}
+                      activeOpacity={0.8}
+                      onPress={() => {
+                        Keyboard.dismiss();
+                        openArea(area);
+                      }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.areaItemTitle}>{area.name}</Text>
+                        <Text style={styles.areaItemMeta}>
+                          {(area.chemicals || []).length}{" "}
+                          {i18n.t("technician.specialServices.chemicalsUsed")}
+                        </Text>
+                      </View>
+                      <MaterialIcons name="chevron-left" size={22} color="#87938f" />
+                    </TouchableOpacity>
+                  </Swipeable>
+                </View>
+              ))}
+            </View>
+          )}
+
           {/* === ADDED SERVICE NOTES SECTION === */}
           {serviceStarted && (
             <View style={styles.notesContainer}>
@@ -2095,20 +2332,6 @@ const handleSaveAll = async () => {
                 textAlignVertical="top"
               />
             </View>
-          )}
-
-          {/* PHOTO BUTTON */}
-          {serviceStarted && (
-            <TouchableOpacity
-              style={styles.primaryBtn}
-              onPress={openImageChooser}
-            >
-              <Text style={styles.primaryText}>
-                {reportImages.length > 0 
-                  ? i18n.t("technician.myocide.photos.addMore") 
-                  : i18n.t("technician.myocide.photos.add")}
-              </Text>
-            </TouchableOpacity>
           )}
 
           {/* VIEW PHOTOS BUTTON */}
@@ -2148,39 +2371,87 @@ const handleSaveAll = async () => {
             )}
 
             
-            {/* 4. START WORK BUTTON - ONLY show for NEW visits (not completed, no edit mode) */}
-            {isAppointmentSession &&
-              !timerActive &&
-              !editMode &&
-              !workStarted &&
-              !showSaveCancel && (
-                <TouchableOpacity
-                  style={styles.primaryBtn}
-                  onPress={startTimer}
-                >
-                  <Text style={styles.primaryText}>{i18n.t("technician.myocide.actionButtons.startWork")}</Text>
-                </TouchableOpacity>
-              )}
-            
-            {/* 5. SAVE/CANCEL BUTTONS - During active work session (timer running) */}
-            {showSaveCancel && timerActive && !isEditCompletedVisit && (
-              <View style={styles.saveCancelContainer}>
-                <TouchableOpacity 
-                  style={styles.saveWorkButton}
-                  onPress={handleSaveAll}
-                >
-                  <Text style={styles.saveWorkButtonText}>{i18n.t("technician.myocide.actionButtons.finishAndSave")}</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={styles.cancelWorkBtn}
-                  onPress={handleCancelWork}
-                >
-                  <Text style={styles.cancelWorkText}>{i18n.t("technician.myocide.actionButtons.cancelWork")}</Text>
-                </TouchableOpacity>
-              </View>
-            )}
           </View>
+
+          </ScrollView>
+
+          {!keyboardVisible &&
+            !editMode &&
+            !selectedStation &&
+            !showPhotoViewer &&
+            !areaModalVisible && (
+              <SafeAreaView style={styles.bottomActionDock} edges={["bottom"]}>
+                {!timerActive &&
+                  !serviceStarted &&
+                  !serviceCompleted &&
+                  !isEditCompletedVisit && (
+                    <TouchableOpacity
+                      style={[styles.bottomActionButton, styles.startActionButton]}
+                      onPress={startTimer}
+                      disabled={saving}
+                    >
+                      <Text style={styles.bottomActionButtonText}>
+                        {i18n.t("technician.myocide.actionButtons.startWork")}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+
+                {serviceStarted && (
+                  <TouchableOpacity
+                    style={[
+                      styles.bottomActionButton,
+                      styles.photoActionButton,
+                      saving && styles.disabledActionButton,
+                    ]}
+                    onPress={openImageChooser}
+                    disabled={saving}
+                  >
+                    <MaterialIcons name="add-a-photo" size={20} color="#fff" />
+                    <Text style={styles.bottomActionButtonText}>
+                      {reportImages.length > 0
+                        ? i18n.t("technician.myocide.photos.addMore")
+                        : i18n.t("technician.myocide.photos.add")}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                {timerActive && (
+                  <>
+                    <TouchableOpacity
+                      style={[
+                        styles.bottomActionButton,
+                        styles.finishActionButton,
+                        saving && styles.disabledActionButton,
+                      ]}
+                      onPress={handleSaveAll}
+                      disabled={saving}
+                    >
+                      {saving ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : (
+                        <Text style={styles.bottomActionButtonText}>
+                          {i18n.t("technician.myocide.actionButtons.finishAndSave")}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.bottomActionButton,
+                        styles.cancelActionButton,
+                        saving && styles.disabledActionButton,
+                      ]}
+                      onPress={handleCancelWork}
+                      disabled={saving}
+                    >
+                      <Text style={styles.bottomActionButtonText}>
+                        {i18n.t("technician.myocide.actionButtons.cancelWork")}
+                      </Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+              </SafeAreaView>
+            )}
 
           {selectedStation && (workStarted || isEditCompletedVisit) && (
             <View style={styles.stationOverlay}>
@@ -2353,8 +2624,120 @@ const handleSaveAll = async () => {
 
   </SafeAreaView>
 )}
-        </View>
-      </TouchableWithoutFeedback>
+          <Modal
+            visible={areaModalVisible}
+            transparent
+            animationType="slide"
+            onRequestClose={() => {
+              Keyboard.dismiss();
+              setAreaModalVisible(false);
+            }}
+          >
+            <KeyboardAvoidingView
+              style={styles.modalKeyboardAvoider}
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
+              keyboardVerticalOffset={0}
+            >
+              <View
+                style={styles.areaModalOverlay}
+                onTouchStart={dismissKeyboardWhenTouchingOutsideInput}
+              >
+                  <View style={styles.areaModalCard}>
+                    <Text style={styles.certificationTitle}>
+                      {treatedAreas.find(a => a.id === activeAreaId)?.name || ""}
+                    </Text>
+
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      style={{ marginVertical: 12 }}
+                      keyboardShouldPersistTaps="handled"
+                      keyboardDismissMode={
+                        Platform.OS === "ios" ? "interactive" : "on-drag"
+                      }
+                    >
+                      {selectedChemicals.map((chemical, index) => {
+                        const name =
+                          typeof chemical === "string"
+                            ? chemical
+                            : chemical.name || chemical.chemicalName;
+                        return (
+                          <TouchableOpacity
+                            key={`${name}-${index}`}
+                            style={styles.chemicalChip}
+                            onPress={() => {
+                              Keyboard.dismiss();
+                              addChemicalToActiveArea(chemical);
+                            }}
+                          >
+                            <Text style={styles.chemicalChipText}>{name}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+
+                    <ScrollView
+                      style={styles.areaModalContent}
+                      contentContainerStyle={styles.areaModalContentContainer}
+                      keyboardShouldPersistTaps="handled"
+                      keyboardDismissMode={
+                        Platform.OS === "ios" ? "interactive" : "on-drag"
+                      }
+                      onScrollBeginDrag={Keyboard.dismiss}
+                    >
+                      {(treatedAreas.find(a => a.id === activeAreaId)?.chemicals || []).map((chemical, index) => (
+                        <View key={`${chemical.name}-${index}`} style={styles.areaChemicalRow}>
+                          <Text style={styles.areaItemTitle}>{chemical.name}</Text>
+                          <TextInput
+                            style={styles.smallInput}
+                            value={String(chemical.concentration || "").replace("%", "")}
+                            onChangeText={value => updateAreaChemical(index, "concentration", value)}
+                            placeholder="%"
+                            keyboardType="decimal-pad"
+                          />
+                          <TextInput
+                            style={styles.smallInput}
+                            value={String(chemical.volume || "").replace("ml", "")}
+                            onChangeText={value => updateAreaChemical(index, "volume", value)}
+                            placeholder="ml"
+                            keyboardType="decimal-pad"
+                          />
+                        </View>
+                      ))}
+                      <TextInput
+                        style={styles.areaNotesInput}
+                        value={areaNotes}
+                        onChangeText={setAreaNotes}
+                        multiline
+                        placeholder={i18n.t("technician.specialServices.areaDetails.notesPlaceholder")}
+                      />
+                    </ScrollView>
+
+                    <View style={styles.areaModalActions}>
+                      <TouchableOpacity
+                        style={styles.areaModalCancel}
+                        onPress={() => {
+                          Keyboard.dismiss();
+                          setAreaModalVisible(false);
+                        }}
+                      >
+                        <Text>{i18n.t("common.cancel")}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.areaModalSave}
+                        onPress={() => {
+                          Keyboard.dismiss();
+                          saveActiveArea();
+                        }}
+                      >
+                        <Text style={{ color: "#fff", fontWeight: "700" }}>{i18n.t("common.save")}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+              </View>
+            </KeyboardAvoidingView>
+          </Modal>
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -2362,6 +2745,9 @@ const handleSaveAll = async () => {
 const styles = StyleSheet.create({
 
   container: { flex: 1, backgroundColor: "#fff" },
+  scrollContent: {
+    paddingBottom: 12,
+  },
 
   topButtons: {
     flexDirection: "row",
@@ -2413,7 +2799,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  map: { width: "100%", aspectRatio: 1 },
+  webMapFrame: {
+    width: "100%",
+    alignSelf: "stretch",
+  },
+  webMapStage: {
+    position: "relative",
+    width: "100%",
+    aspectRatio: 1,
+    alignSelf: "stretch",
+    overflow: "hidden",
+  },
+  map: {
+    width: deviceWidth,
+    height: deviceWidth
+  },
 
   marker: {
     position: "absolute",
@@ -2549,6 +2949,46 @@ const styles = StyleSheet.create({
     fontSize: 16 
   },
 
+  bottomActionDock: {
+    backgroundColor: "#fff",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#dfe7e5",
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    gap: 8,
+  },
+  bottomActionButton: {
+    minHeight: 50,
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
+  bottomActionButtonText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 16,
+    textAlign: "center",
+  },
+  startActionButton: {
+    backgroundColor: "#1f9c8d",
+  },
+  photoActionButton: {
+    backgroundColor: "#176f63",
+  },
+  finishActionButton: {
+    backgroundColor: "#1f9c8d",
+  },
+  cancelActionButton: {
+    backgroundColor: "#dc3545",
+  },
+  disabledActionButton: {
+    opacity: 0.65,
+  },
+
   reloadButton: {
     marginTop: 15,
     paddingHorizontal: 20,
@@ -2594,7 +3034,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginTop: 10,
     marginBottom: 10,
-    marginTop: 80, // Add margin to push it below the top buttons
   },
   notesLabel: {
     fontSize: 16,
@@ -2684,5 +3123,56 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     fontSize: 16
   },
+  certificationSection: { marginHorizontal: 20, marginTop: 14, padding: 16, backgroundColor: "#fff", borderRadius: 14, borderWidth: 1, borderColor: "#e6efed" },
+  certificationTitle: { fontSize: 18, fontWeight: "700", color: "#1f9c8b", marginBottom: 12 },
+  identityCard: { backgroundColor: "#f0f9f8", padding: 12, borderRadius: 10, marginBottom: 14 },
+  identityText: { color: "#334", fontSize: 14, marginBottom: 4 },
+  areaAddRow: { flexDirection: "row", marginTop: 16, marginBottom: 10 },
+  areaNameInput: { flex: 1, borderWidth: 1, borderColor: "#dfe7e5", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 },
+  areaAddButton: { marginLeft: 8, paddingHorizontal: 18, justifyContent: "center", borderRadius: 10, backgroundColor: "#1f9c8b" },
+  areaAddButtonText: { color: "#fff", fontWeight: "700" },
+  areaSwipeContainer: {
+    marginTop: 8,
+    borderRadius: 10,
+    overflow: "hidden",
+    backgroundColor: "#dc3545",
+  },
+  areaSwipeDelete: {
+    width: 104,
+    backgroundColor: "#dc3545",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 5,
+  },
+  areaSwipeDeleteText: {
+    color: "#fff",
+    fontWeight: "700",
+  },
+  areaItem: {
+    minHeight: 64,
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#edf1f0",
+    borderRadius: 10,
+    backgroundColor: "#fff",
+  },
+  areaItemTitle: { fontSize: 15, fontWeight: "600", color: "#2c3e50" },
+  areaItemMeta: { fontSize: 12, color: "#777", marginTop: 3 },
+  modalKeyboardAvoider: { flex: 1 },
+  areaModalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" },
+  areaModalCard: { backgroundColor: "#fff", borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 20, maxHeight: "90%" },
+  areaModalContent: { flexShrink: 1, maxHeight: 300 },
+  areaModalContentContainer: { paddingBottom: 8 },
+  chemicalChip: { borderWidth: 1, borderColor: "#1f9c8b", backgroundColor: "#eaf7f5", borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8, marginRight: 8 },
+  chemicalChipText: { color: "#1f9c8b", fontWeight: "600" },
+  areaChemicalRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 8 },
+  smallInput: { width: 70, borderWidth: 1, borderColor: "#ddd", borderRadius: 8, padding: 8 },
+  areaNotesInput: { minHeight: 90, borderWidth: 1, borderColor: "#ddd", borderRadius: 10, padding: 12, textAlignVertical: "top", marginTop: 12 },
+  areaModalActions: { flexDirection: "row", gap: 10, marginTop: 16 },
+  areaModalCancel: { flex: 1, alignItems: "center", padding: 14, backgroundColor: "#f2f2f2", borderRadius: 10 },
+  areaModalSave: { flex: 1, alignItems: "center", padding: 14, backgroundColor: "#1f9c8b", borderRadius: 10 },
 });
 export default MapScreen;

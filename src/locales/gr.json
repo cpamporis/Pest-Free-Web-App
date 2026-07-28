@@ -79,7 +79,8 @@
     "hours_other": "ώρες",
     "minutes_one": "λεπτό",
     "minutes_other": "λεπτά",
-    "chooseOption": "Επιλέξτε επιλογή"
+    "chooseOption": "Επιλέξτε επιλογή",
+    "ok": "OK"
   },
   "admin": {
     "home": {
@@ -165,6 +166,22 @@
         "system": "Σύστημα Διαχείρισης Pestify",
         "version": "Έκδοση 1.1 • Ημερομηνία: {{date}}",
         "copyright": "© {{year}} Pestify. Με την επιφύλαξη παντός δικαιώματος."
+      },
+      "subscription": {
+        "plan": "{{plan}} ΠΡΟΓΡΑΜΜΑ",
+        "active": "Ενεργό",
+        "customers": "Πελάτες: {{used}} / {{max}}",
+        "technicians": "Τεχνικοί: {{used}} / {{max}}",
+        "plans": {
+          "free": "ΔΩΡΕΑΝ",
+          "basic": "ΒΑΣΙΚΟ",
+          "standard": "ΤΥΠΙΚΟ",
+          "pro": "PRO",
+          "professional": "ΕΠΑΓΓΕΛΜΑΤΙΚΟ",
+          "premium": "PREMIUM",
+          "enterprise": "ΕΤΑΙΡΙΚΟ",
+          "custom": "ΠΡΟΣΑΡΜΟΣΜΕΝΟ"
+        }
       }
     },
     "notifications": {
@@ -307,6 +324,10 @@
         "special": {
           "label": "Ειδική Επέμβαση",
           "description": "Ειδικές Επεμβάσεις"
+        },
+        "certificate": {
+          "label": "Υπηρεσία Πιστοποίησης",
+          "description": "Έλεγχος σταθμών και στοιχεία πιστοποίησης"
         }
       },
       "specialSubtypes": {
@@ -344,7 +365,8 @@
       "servicePrice": {
         "title": "Τιμή Υπηρεσίας",
         "placeholder": "Εισάγετε τιμή υπηρεσίας σε Ευρώ (π.χ. 80)",
-        "invalid": "Εισάγετε έγκυρη τιμή μέχρι δύο δεκαδικά"
+        "invalid": "Εισάγετε έγκυρη τιμή μέχρι δύο δεκαδικά",
+        "totalWithVat": "Σύνολο με ΦΠΑ"
       },
       "appointments": {
         "title": "Ραντεβού για {{date}}",
@@ -356,7 +378,9 @@
         "cancelled": "Ακυρωμένο",
         "removeTitle": "Διαγραφή Ραντεβού",
         "removeConfirm": "Θέλετε να διαγράψετε αυτό το ραντεβού;",
-        "removeSuccess": "Το ραντεβού διαγράφτηκε επιτυχώς"
+        "removeSuccess": "Το ραντεβού διαγράφτηκε επιτυχώς",
+        "cancelConfirm": "Το ραντεβού ακυρώθηκε επιτυχώς",
+        "cancelTitle": "Ακύρωση Ραντεβού"
       },
       "addCustomer": {
         "title": "Προσθήκη Ραντεβού Πελάτη",
@@ -388,7 +412,8 @@
         "saveChanges": "Αποθήκευση Αλλαγών",
         "cancel": "Ακύρωση",
         "updateSuccess": "Επιτυχής ανανέωση ραντεβού",
-        "treatmentDetails": "Πληροφορίες Υπηρεσίας"
+        "treatmentDetails": "Πληροφορίες Υπηρεσίας",
+        "specificServiceType": "Τύπος Ειδικής Υπηρεσίας"
       },
       "modals": {
         "selectService": "Επιλογή Τύπου Υπηρεσίας",
@@ -399,6 +424,11 @@
         "system": "Σύστημα Διαχείρισης Προγράμματος Τεχνικών",
         "version": "Έκδοση 1.1 • Ημερομηνία: {{date}}",
         "copyright": "© {{year}} Pestify. Με την επιφύλαξη παντός δικαιώματος."
+      },
+      "serviceVat": {
+        "title": "ΦΠΑ",
+        "placeholder": "π.χ. 24",
+        "invalid": "Συμπλήρωσε έγκυρο ποσοστό ΦΠΑ."
       }
     },
     "customerProfile": {
@@ -521,7 +551,7 @@
         "title": "Διαχείριση Αιτημάτων",
         "subtitle": "Εξετάστε και διαχειριστείτε αιτήματα εξυπηρέτησης και αναπρογραμματισμού πελατών"
       },
-      "declineRequest":"Απόρριψη Αιτήματος",
+      "declineRequest": "Απόρριψη Αιτήματος",
       "declineConfirm": "Είστε σίγουρος για την απόρριψη αιτήματος ;",
       "declineButton": "Απόρριψη",
       "at": "στις",
@@ -601,7 +631,7 @@
         "cancel": "Ακύρωση",
         "createAppointment": "Δημιουργία Ραντεβού",
         "approveReschedule": "Έγκριση Αναπρογραμματισμού",
-        "createSuccess":"Επιτυχής δημιουργία ραντεβού",
+        "createSuccess": "Επιτυχής δημιουργία ραντεβού",
         "rescheduleSuccessDetailed": "Επιτυχής επαναπρογραμματισμός ραντεβού",
         "rescheduleApproved": "Το ραντεβού επαναπρογραμματίστηκε επιτυχώς"
       },
@@ -612,7 +642,8 @@
         "confirmPassword": "Επιβεβαίωση Κωδικού",
         "updatePassword": "Ενημέρωση Κωδικού",
         "newPasswordPlaceholder": "Εισάγετε νέο κωδικό",
-        "confirmPasswordPlaceholder": "Επιβεβαιώστε τον νέο κωδικό"
+        "confirmPasswordPlaceholder": "Επιβεβαιώστε τον νέο κωδικό",
+        "updateSuccess": "Ο κωδικός ανανεώθηκε επιτυχώς"
       },
       "footer": {
         "system": "Σύστημα Διαχείρισης Αιτημάτων Πελατών",
@@ -698,7 +729,11 @@
         "customerNameRequired": "Παρακαλώ προσθέστε το όνομα πελάτη",
         "createSuccess": "Επιτυχής δημιουργία πελάτη",
         "createWithLoginSuccess": "Ο λογαριασμός πελάτη δημιουργήθηκε με επιτυχία",
-        "createWithoutLoginSuccess": "Δεν δημιουργήθηκε λογαριασμός πελάτη"
+        "createWithoutLoginSuccess": "Δεν δημιουργήθηκε λογαριασμός πελάτη",
+        "tin": "ΑΦΜ",
+        "tinPlaceholder": "π.χ. 123456789",
+        "ama": "ΑΜΑ",
+        "amaPlaceholder": "π.χ. αριθμός ΑΜΑ"
       },
       "editModal": {
         "title": "Επεξεργασία Πελάτη",
@@ -720,7 +755,9 @@
         "saveChanges": "Αποθήκευση Αλλαγών",
         "deleteMapTitle": "Διαγραφή Κάτοψης",
         "deleteMapConfirm": "Είστε σίγουροι ότι θέλετε να διαγράψετε αυτή την κάτοψη;",
-        "deleteMapSuccess": "Η κάτοψη διαγράφηκε με επιτυχία"
+        "deleteMapSuccess": "Η κάτοψη διαγράφηκε με επιτυχία",
+        "saveSuccess": "Το προφίλ ενημερώθηκε με επιτυχία",
+        "mapAddSuccess": "Η κάτοψη προστέθηκε με επιτυχία"
       },
       "deleteModal": {
         "title": "Αφαίρεση Πελάτη",
@@ -834,7 +871,9 @@
         "ticketDesc": "ανά υπηρεσία",
         "visitFrequency": "Συχνότητα Επισκέψεων",
         "frequencyDesc": "μεταξύ υπηρεσιών",
-        "excellent": ""
+        "excellent": "",
+        "monthlyVat": "ΦΠΑ Μήνα",
+        "monthlyVatDesc": "Σύνολο ΦΠΑ τρέχοντος μήνα"
       },
       "insights": {
         "title": "Γρήγορες Πληροφορίες",
@@ -847,7 +886,9 @@
         "totalRevenue": "Συνολικά Έσοδα",
         "thisYear": "Φέτος",
         "avgPrice": "Μέση Τιμή",
-        "completed": "Ολοκληρωμένα"
+        "completed": "Ολοκληρωμένα",
+        "netRevenue": "Καθαρά Έσοδα",
+        "vat": "ΦΠΑ"
       },
       "revenueTrends": {
         "title": "Τάσεις Εσόδων",
@@ -958,7 +999,8 @@
         "agePlaceholder": "Εισάγετε ηλικία",
         "emailPlaceholder": "Διεύθυνση email",
         "usernamePlaceholder": "Εισάγετε όνομα χρήστη",
-        "passwordPlaceholder": "Εισάγετε κωδικό"
+        "passwordPlaceholder": "Εισάγετε κωδικό",
+        "success": "Ο τεχνικός δημιουργήθηκε με επιτυχία"
       },
       "editModal": {
         "title": "Επεξεργασία Τεχνικού",
@@ -978,7 +1020,8 @@
         "title": "Διαγραφή Τεχνικού",
         "message": "Είστε σίγουροι ότι θέλετε να διαγράψετε αυτόν τον τεχνικό; Αυτή η ενέργεια δεν μπορεί να αναιρεθεί.",
         "warning": "Όλες οι ανατεθειμένες επισκέψεις και το ιστορικό θα αφαιρεθούν μόνιμα.",
-        "delete": "Διαγραφή"
+        "delete": "Διαγραφή",
+        "success": "Επιτυχής διαγραφή τεχνικού"
       },
       "footer": {
         "system": "Σύστημα Διαχείρισης Τεχνικών",
@@ -992,7 +1035,8 @@
     "disinfection": "Απολύμανση",
     "insecticide": "Απεντόμωση",
     "special": "Ειδική Επέμβαση",
-    "unknown": "Άγνωστη Υπηρεσία"
+    "unknown": "Άγνωστη Υπηρεσία",
+    "certificate": "Υπηρεσία Πιστοποίησης"
   },
   "status": {
     "scheduled": "Προγραμματισμένο",
@@ -1388,7 +1432,9 @@
     "serviceDisplay": {
       "special": "Ειδική: {{name}}",
       "specialWithSubtype": "Ειδική: {{subtype}}"
-    }
+    },
+    "tin": "ΑΦΜ",
+    "ama": "ΑΜΑ"
   },
   "components": {
     "addTechnicianModal": {
@@ -1535,12 +1581,14 @@
       "appointmentId": "ID Ραντεβού: {{id}}",
       "unknownDate": "Άγνωστη ημερομηνία",
       "minutes": "λεπ",
-       "serviceTypes": {
-          "myocide": "Μυοκτονία",
-          "insecticide": "Απεντόμωση",
-          "disinfection": "Απολύμανση",
-          "special": "Ειδική Επέμβαση"
-        }
+      "serviceTypes": {
+        "myocide": "Μυοκτονία",
+        "insecticide": "Απεντόμωση",
+        "disinfection": "Απολύμανση",
+        "special": "Ειδική Επέμβαση",
+        "certificate": "Υπηρεσία Πιστοποίησης"
+      },
+      "downloadStarted": "Ολοκληρώθηκε η λήψη αναφοράς"
     }
   },
   "technician": {
@@ -1569,7 +1617,8 @@
       "phone": "Τηλέφωνο",
       "email": "Email",
       "navigate": "Πλοήγηση",
-      "copyright": "© {{year}} Pestify. Με την επιφύλαξη παντός δικαιώματος."
+      "copyright": "© {{year}} Pestify. Με την επιφύλαξη παντός δικαιώματος.",
+      "noAddress": "Δεν υπάρχει καταχωρημένη διεύθυνση"
     },
     "home": {
       "loading": "Φόρτωση Πίνακα Τεχνικού...",
@@ -1620,7 +1669,8 @@
           "myocide": "Μυοκτονία",
           "disinfection": "Απολύμανση",
           "insecticide": "Απεντόμωση",
-          "special": "Ειδική Επέμβαση"
+          "special": "Ειδική Επέμβαση",
+          "certificate": "Υπηρεσία Πιστοποίησης"
         }
       },
       "actions": {
@@ -1720,7 +1770,7 @@
         "pheromoneTraps": "Παγίδες Φερομόνης",
         "totalStations": "Σύνολο Συσκευών: {{count}}"
       },
-      "stationStatus":{
+      "stationStatus": {
         "status": "Κατάσταση",
         "inactive": "Ανενεργό",
         "lowActivity": "Χαμηλή Δραστηριότητα",
@@ -2052,9 +2102,17 @@
           "accessRequired": "Πρέπει να καταγράψετε την Πρόσβαση πριν την αποθήκευση"
         }
       }
+    },
+    "certificate": {
+      "title": "Υπηρεσία Πιστοποίησης",
+      "certificationSection": "Στοιχεία Πιστοποίησης",
+      "noMapInspection": "Δεν πραγματοποιήθηκε έλεγχος χάρτη",
+      "missingCustomerData": "Λείπουν στοιχεία πελάτη",
+      "missingCustomerDataMessage": "Το ΑΦΜ και το ΑΜΑ πρέπει να συμπληρωθούν στο προφίλ του πελάτη πριν ολοκληρωθεί η πιστοποίηση.",
+      "noData": "Δεν υπάρχουν στοιχεία πιστοποίησης",
+      "noDataMessage": "Προσθέστε αποτέλεσμα ελέγχου, σημείο εφαρμογής, σκεύασμα, παρατήρηση ή φωτογραφία."
     }
   },
-  
   "language": {
     "en": "EN",
     "gr": "GR"

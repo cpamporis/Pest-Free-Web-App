@@ -1,4 +1,4 @@
-// ReportScreen.js - Desktop
+// ReportScreen.js - iOS Production
 import React, { useEffect, useState } from "react";
 import { 
   View, 
@@ -29,8 +29,22 @@ export default function ReportScreen({ route, navigation, context, onBack }) {
   const [baitTypes, setBaitTypes] = useState([]);
   const [chemicals, setChemicals] = useState([]);
   const [loadingMaterials, setLoadingMaterials] = useState(false);
-  const [expandedImage, setExpandedImage] = useState(null);
-  
+  const normalizeReportServiceType = (value) => {
+    const type = String(value || "")
+      .trim()
+      .toLowerCase();
+
+    if (
+      type === "certificate" ||
+      type === "certification" ||
+      type === "πιστοποίηση" ||
+      type === "st"
+    ) {
+      return "certificate";
+    }
+
+    return type;
+  };
   const routeParams = route?.params || {};
   const contextParams = context || {};
 
@@ -44,9 +58,12 @@ export default function ReportScreen({ route, navigation, context, onBack }) {
     contextParams.log_id ||
     contextParams.id;
 
-  const serviceType =
+  const serviceType = normalizeReportServiceType(
     routeParams.serviceType ||
-    contextParams.serviceType;
+    routeParams.service_type ||
+    contextParams.serviceType ||
+    contextParams.service_type
+  );
 
   const readOnly =
     routeParams.readOnly ??
@@ -72,13 +89,16 @@ export default function ReportScreen({ route, navigation, context, onBack }) {
 
   try {
     // ✅ Decide serviceType from the best available source
-    const st =
-      (route?.params?.serviceType ||
-        context?.serviceType ||
-        serviceType ||
-        "").toLowerCase();
+    const st = normalizeReportServiceType(
+      route?.params?.serviceType ||
+      route?.params?.service_type ||
+      context?.serviceType ||
+      context?.service_type ||
+      serviceType ||
+      ""
+    );
     // ✅ MYOCIDE -> VISIT REPORT endpoint (visits + station_logs)
-    if (st === "myocide") {
+    if (st === "myocide" || st === "certificate") {
       const res = await apiService.getVisitReport(visitId);
 
       if (!res?.success || !res?.report) {
@@ -89,10 +109,24 @@ export default function ReportScreen({ route, navigation, context, onBack }) {
       // { visitId, serviceType:'myocide', stationCounts, stations, baitsUsed, ... }
       setReport({
         ...res.report,
-        serviceType: "myocide",
-        visitId: res.report.visitId || visitId,
-        customerName: res.report.customerName || res.report.customer_name,
-        technicianName: res.report.technicianName || res.report.technician_name,
+
+        serviceType: normalizeReportServiceType(
+          st ||
+          res.report.serviceType ||
+          res.report.service_type
+        ),
+
+        visitId:
+          res.report.visitId ||
+          visitId,
+
+        customerName:
+          res.report.customerName ||
+          res.report.customer_name,
+
+        technicianName:
+          res.report.technicianName ||
+          res.report.technician_name,
       });
 
       return;
@@ -342,7 +376,12 @@ export default function ReportScreen({ route, navigation, context, onBack }) {
       : i18n.t("technician.insecticide.title") || i18n.t("serviceTypes.insecticide");
   }
   
-  if (report.serviceType === "myocide") return i18n.t("serviceTypes.myocide") || "Myocide Service";
+  if (report.serviceType === "certificate") {
+    return (
+      i18n.t("serviceTypes.certificate") ||
+      "Certification Service"
+    );
+  }
 
   return report.serviceType || i18n.t("technician.common.service") || "Service";
 };
@@ -559,7 +598,7 @@ export default function ReportScreen({ route, navigation, context, onBack }) {
     );
   };
 
-  const renderTreatmentPhotos = () => {
+    const renderTreatmentPhotos = () => {
     if (!report?.images || report.images.length === 0) return null;
 
     return (
@@ -577,26 +616,21 @@ export default function ReportScreen({ route, navigation, context, onBack }) {
 
             if (!imageUrl) return null;
 
-            const isExpanded = expandedImage === imageUrl;
-
             return (
               <View key={index} style={{ marginRight: 12 }}>
-                <TouchableOpacity 
-                  onPress={() => setExpandedImage(isExpanded ? null : imageUrl)}
-                  activeOpacity={0.8}
-                >
-                  <Image
-                    source={{ uri: imageUrl }}
-                    style={[
-                      styles.treatmentImage,
-                      isExpanded && styles.expandedImage
-                    ]}
-                    resizeMode="cover"
-                    onError={(e) =>
-                      console.log("❌ ReportScreen image load error:", imageUrl, e.nativeEvent?.error)
-                    }
-                  />
-                </TouchableOpacity>
+                <Image
+                  source={{ uri: imageUrl }}
+                  style={{
+                    width: 160,
+                    height: 160,
+                    borderRadius: 12,
+                    backgroundColor: "#f0f0f0"
+                  }}
+                  resizeMode="cover"
+                  onError={(e) =>
+                    console.log("❌ ReportScreen image load error:", imageUrl, e.nativeEvent?.error)
+                  }
+                />
               </View>
             );
           })}
@@ -620,12 +654,27 @@ export default function ReportScreen({ route, navigation, context, onBack }) {
     
     if (report.serviceType === "myocide") return i18n.t("serviceTypes.myocide") || "Myocide Service";
 
+    if (report.serviceType === "certificate") {
+      return (
+        i18n.t("serviceTypes.certificate") ||
+        "Certification Service"
+      );
+    }
+
     return report.serviceType || i18n.t("technician.common.na") || "N/A";
   };
 
   // Helper to render service details section
   const renderServiceDetails = () => {
-  if (!report || report.serviceType === 'myocide') return null;
+  if (
+    !report ||
+    (
+      report.serviceType !== "myocide" &&
+      report.serviceType !== "certificate"
+    )
+  ) {
+    return null;
+  }
   
   const serviceDetails = getServiceDetailsLabel(report);
   
@@ -890,7 +939,12 @@ export default function ReportScreen({ route, navigation, context, onBack }) {
 
   // Helper to render myocide report
   const renderMyocideReport = () => {
-    if (!report || report.serviceType !== 'myocide') return null;
+    if (
+      !report ||
+      !["myocide", "certificate"].includes(report.serviceType)
+    ) {
+      return null;
+    }
     
     return (
       <>
@@ -1404,6 +1458,8 @@ export default function ReportScreen({ route, navigation, context, onBack }) {
       return i18n.t("technician.specialServices.title") || "Special Service Report";
     } else if (report.serviceType === 'myocide') {
       return i18n.t("serviceTypes.myocide") || "Myocide Report";
+    } else if (report.serviceType === 'certificate') {
+      return i18n.t("serviceTypes.certificate") || "Certification Service";
     } else {
       return i18n.t("technician.report.title") || "Service Report";
     }
@@ -1417,6 +1473,7 @@ export default function ReportScreen({ route, navigation, context, onBack }) {
     if (report.serviceType === 'insecticide') return "pest-control";
     if (report.serviceType === 'special') return "star";
     if (report.serviceType === 'myocide') return "pest-control-rodent";
+    if (report.serviceType === "certificate") return "verified";
     
     return "description";
   };
@@ -1684,11 +1741,17 @@ export default function ReportScreen({ route, navigation, context, onBack }) {
             </View>
             <View style={styles.overviewBadge}>
               <Text style={styles.overviewBadgeText}>
-                {report?.serviceType === 'myocide' ? i18n.t("serviceTypes.myocide") : 
-                report?.serviceType === 'insecticide' ? i18n.t("serviceTypes.insecticide") :
-                report?.serviceType === 'disinfection' ? i18n.t("serviceTypes.disinfection") :
-                report?.serviceType === 'special' ? i18n.t("serviceTypes.special") : 
-                report?.serviceType || i18n.t("technician.common.service")}
+                {report?.serviceType === "myocide"
+                  ? i18n.t("serviceTypes.myocide")
+                  : report?.serviceType === "certificate"
+                  ? i18n.t("serviceTypes.certificate")
+                  : report?.serviceType === "insecticide"
+                  ? i18n.t("serviceTypes.insecticide")
+                  : report?.serviceType === "disinfection"
+                  ? i18n.t("serviceTypes.disinfection")
+                  : report?.serviceType === "special"
+                  ? i18n.t("serviceTypes.special")
+                  : report?.serviceType || i18n.t("technician.common.service")}
               </Text>
             </View>
           </View>
@@ -1748,9 +1811,28 @@ export default function ReportScreen({ route, navigation, context, onBack }) {
         {renderHealthSafetySection()}
 
         {/* Render appropriate report based on service type */}
-        {report.serviceType === 'myocide' 
-          ? renderMyocideReport()
-          : renderServiceDetails()}
+        {report.serviceType === "myocide" &&
+          renderMyocideReport()}
+
+        {report.serviceType === "certificate" && (
+          <>
+            {report.stations?.length > 0 ? (
+              renderMyocideReport()
+            ) : (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>
+                  {i18n.t("technician.certificate.noMapInspection")}
+                </Text>
+              </View>
+            )}
+
+            {renderServiceDetails()}
+          </>
+        )}
+
+        {report.serviceType !== "myocide" &&
+          report.serviceType !== "certificate" &&
+          renderServiceDetails()}
         
         
         {renderTreatmentPhotos()}  
@@ -2479,17 +2561,5 @@ debugBadgeText: {
   color: '#fff',
   fontSize: 10,
   fontWeight: '600'
-},
-
-treatmentImage: {
-  width: 160,
-  height: 160,
-  borderRadius: 12,
-  backgroundColor: "#f0f0f0",
-},
-expandedImage: {
-  width: 500,
-  height: 500,
-  borderRadius: 12,
 },
 });

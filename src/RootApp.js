@@ -4,6 +4,7 @@ import { View, Text } from "react-native";
 import LoginScreen from "./screens/LoginScreen";
 import AdminHomeScreen from "./screens/Admin/AdminHomeScreen";
 import TechnicianHomeScreen from "./screens/Technician/TechnicianHomeScreen";
+import CertificationServiceScreen from "./screens/Technician/CertificationServiceScreen";
 import MapScreen from "./screens/Technician/MyocideScreen";
 import NavigationScreen from "./screens/Technician/NavigationScreen";
 import DisinfectionScreen from "./screens/Technician/DisinfectionScreen";
@@ -204,7 +205,11 @@ export default function RootApp() {
 
   // 6️⃣ SERVICE SCREENS
   if (loggedTechnician && currentCustomer && !showNavigation && !showReport) {
-    const serviceType = currentSession?.serviceType || "myocide";  
+    const serviceType = currentSession?.serviceType ||
+      currentSession?.service_type ||
+      currentSession?.rawAppointment?.serviceType ||
+      currentSession?.rawAppointment?.service_type ||
+      "myocide";   
     
     // Common props for all service screens
     const commonProps = {
@@ -229,6 +234,12 @@ export default function RootApp() {
         return <InsecticideScreen {...commonProps} />;
       case "special":
         return <SpecialServicesScreen {...commonProps} />;
+        case "certificate":
+          return (
+            <CertificationServiceScreen
+              {...commonProps}
+            />
+          );
       case "myocide":
       default:
         return <MapScreen {...commonProps} />;
