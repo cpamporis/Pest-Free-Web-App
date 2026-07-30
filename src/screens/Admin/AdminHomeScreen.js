@@ -240,7 +240,7 @@ export default function AdminHomeScreen({ onLogout }) {
         
                       <View style={styles.subscriptionBadge}>
                         <Text style={styles.subscriptionBadgeText}>
-                          Active
+                          {i18n.t("admin.home.subscription.active")}
                         </Text>
                       </View>
                     </View>
