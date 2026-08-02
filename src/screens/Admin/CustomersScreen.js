@@ -65,6 +65,33 @@ function normalizeCustomerSearch(value) {
     : text;
 }
 
+function normalizeAmaNumberList(value) {
+  const sourceValues = Array.isArray(value) ? value : [value];
+
+  return [
+    ...new Set(
+      sourceValues
+        .flatMap(item =>
+          String(item ?? "").split(/[,\n;]/)
+        )
+        .map(item => item.trim())
+        .filter(Boolean)
+    )
+  ];
+}
+
+function getCustomerAmaNumbers(customer) {
+  const arrayValue =
+    customer?.amaNumbers ??
+    customer?.ama_numbers;
+
+  return normalizeAmaNumberList(
+    Array.isArray(arrayValue) && arrayValue.length > 0
+      ? arrayValue
+      : customer?.ama
+  );
+}
+
 function filterCustomersBySearch(customers, searchText) {
   const query = normalizeCustomerSearch(searchText);
 
@@ -79,6 +106,9 @@ function filterCustomersBySearch(customers, searchText) {
       customer.telephone,
       customer.tin,
       customer.ama,
+      ...(Array.isArray(customer.amaNumbers)
+        ? customer.amaNumbers
+        : []),
     ].some((value) =>
       normalizeCustomerSearch(value).includes(query)
     )
@@ -259,6 +289,94 @@ function CustomerSelectModal({
   );
 }
 
+function AmaNumbersFields({
+  values,
+  onChange,
+  disabled = false
+}) {
+  const updateValue = (index, value) => {
+    onChange(
+      values.map((currentValue, currentIndex) =>
+        currentIndex === index ? value : currentValue
+      )
+    );
+  };
+
+  const addValue = () => {
+    onChange([...values, ""]);
+  };
+
+  const removeValue = (index) => {
+    const nextValues = values.filter(
+      (_, currentIndex) => currentIndex !== index
+    );
+
+    onChange(nextValues.length > 0 ? nextValues : [""]);
+  };
+
+  return (
+    <View style={styles.inputContainer}>
+      <Text style={styles.inputLabel}>
+        {i18n.t("admin.customers.addModal.amaNumbers")}
+      </Text>
+
+      {values.map((value, index) => (
+        <View
+          key={`ama-${index}`}
+          style={styles.amaInputRow}
+        >
+          <TextInput
+            style={[styles.input, styles.amaInput]}
+            placeholder={`${i18n.t(
+              "admin.customers.addModal.amaPlaceholder"
+            )} ${index + 1}`}
+            placeholderTextColor="#999"
+            keyboardType="number-pad"
+            value={value}
+            onChangeText={text => updateValue(index, text)}
+            editable={!disabled}
+          />
+
+          {values.length > 1 && (
+            <TouchableOpacity
+              style={styles.amaRemoveButton}
+              onPress={() => removeValue(index)}
+              disabled={disabled}
+              activeOpacity={0.7}
+              accessibilityLabel={i18n.t(
+                "admin.customers.addModal.removeAma"
+              )}
+            >
+              <MaterialIcons
+                name="remove-circle-outline"
+                size={22}
+                color="#e74c3c"
+              />
+            </TouchableOpacity>
+          )}
+        </View>
+      ))}
+
+      <TouchableOpacity
+        style={styles.amaAddButton}
+        onPress={addValue}
+        disabled={disabled}
+        activeOpacity={0.7}
+      >
+        <MaterialIcons
+          name="add-circle-outline"
+          size={19}
+          color="#1f9c8b"
+        />
+
+        <Text style={styles.amaAddButtonText}>
+          {i18n.t("admin.customers.addModal.addAma")}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 // UPDATED: AddCustomerModal with Image Upload (Gallery only)
 function AddCustomerModal({ onClose, onSave }) {
   const [customerName, setCustomerName] = useState("");
@@ -270,7 +388,7 @@ function AddCustomerModal({ onClose, onSave }) {
   const [loginPassword, setLoginPassword] = useState("");
   const [telephone, setTelephone] = useState("");
   const [tin, setTin] = useState("");
-  const [ama, setAma] = useState("");
+  const [amaNumbers, setAmaNumbers] = useState([""]);
   // Map upload states
   const [showMapUpload, setShowMapUpload] = useState(false);
   const [mapName, setMapName] = useState("");
@@ -318,13 +436,16 @@ function AddCustomerModal({ onClose, onSave }) {
     setLoading(true);
 
     try {
+      const normalizedAmaNumbers =
+        normalizeAmaNumberList(amaNumbers);
       const customerData = {
         customerName: customerName.trim(),
         address: address.trim(),
         email: email.trim(),
         telephone: telephone.trim(),
         tin: tin.trim(),
-        ama: ama.trim(),
+        amaNumbers: normalizedAmaNumbers,
+        ama: normalizedAmaNumbers.join(", "),
         maps: []
       };
 
@@ -540,23 +661,11 @@ function AddCustomerModal({ onClose, onSave }) {
   />
 </View>
 
-<View style={styles.inputContainer}>
-  <Text style={styles.inputLabel}>
-    {i18n.t("admin.customers.addModal.ama")}
-  </Text>
-
-  <TextInput
-    style={styles.input}
-    placeholder={i18n.t(
-      "admin.customers.addModal.amaPlaceholder"
-    )}
-    placeholderTextColor="#999"
-    keyboardType="number-pad"
-    value={ama}
-    onChangeText={setAma}
-    editable={!loading}
-  />
-</View>
+<AmaNumbersFields
+  values={amaNumbers}
+  onChange={setAmaNumbers}
+  disabled={loading}
+/>
 
                 <Text style={styles.sectionTitle}>{i18n.t("admin.customers.addModal.loginAccount")}</Text>
                 <Text style={styles.sectionDescription}>
@@ -735,7 +844,7 @@ function EditCustomerModal({ customer, onClose, onSave }) {
   const [loading, setLoading] = useState(false);
   const [telephone, setTelephone] = useState("");
   const [tin, setTin] = useState("");
-  const [ama, setAma] = useState("");
+  const [amaNumbers, setAmaNumbers] = useState([""]);
   
   // Map upload states
   const [showMapUpload, setShowMapUpload] = useState(false);
@@ -767,7 +876,14 @@ function EditCustomerModal({ customer, onClose, onSave }) {
         setEmail(fresh.email || "");
         setTelephone(fresh.telephone || "");
         setTin(fresh.tin || "");
-        setAma(fresh.ama || "");
+        const loadedAmaNumbers =
+          getCustomerAmaNumbers(fresh);
+
+        setAmaNumbers(
+          loadedAmaNumbers.length > 0
+            ? loadedAmaNumbers
+            : [""]
+        );
         setCustomerMaps(fresh.maps || []);
       } catch (e) {
         console.error("❌ Failed to load customer:", e);
@@ -919,6 +1035,8 @@ function EditCustomerModal({ customer, onClose, onSave }) {
 
     setLoading(true);
     try {
+      const normalizedAmaNumbers =
+        normalizeAmaNumberList(amaNumbers);
       const updateData = {
         customerId: customer.customerId,
         customerName: customerName.trim(),
@@ -926,7 +1044,8 @@ function EditCustomerModal({ customer, onClose, onSave }) {
         email: email.trim(),
         telephone: telephone.trim(),
         tin: tin.trim(),
-        ama: ama.trim()
+        amaNumbers: normalizedAmaNumbers,
+        ama: normalizedAmaNumbers.join(", ")
       };
 
       await onSave(updateData);
@@ -1041,23 +1160,11 @@ function EditCustomerModal({ customer, onClose, onSave }) {
                   />
                 </View>
 
-                <View style={styles.inputContainer}>
-                  <Text style={styles.inputLabel}>
-                    {i18n.t("admin.customers.addModal.ama")}
-                  </Text>
-
-                  <TextInput
-                    style={styles.input}
-                    placeholder={i18n.t(
-                      "admin.customers.addModal.amaPlaceholder"
-                    )}
-                    placeholderTextColor="#999"
-                    keyboardType="number-pad"
-                    value={ama}
-                    onChangeText={setAma}
-                    editable={!loading}
-                  />
-                </View>
+                <AmaNumbersFields
+                  values={amaNumbers}
+                  onChange={setAmaNumbers}
+                  disabled={loading}
+                />
 
                 {/* MAPS SECTION */}
                 <Text style={styles.sectionTitle}>{i18n.t("admin.customers.editModal.mapsSection")}</Text>
@@ -2959,6 +3066,43 @@ customerSearchEmptyText: {
   color: "#999",
   textAlign: "center",
   fontFamily: "System",
+},
+amaInputRow: {
+  flexDirection: "row",
+  alignItems: "center",
+  marginBottom: 8
+},
+
+amaInput: {
+  flex: 1,
+  marginBottom: 0
+},
+
+amaRemoveButton: {
+  width: 42,
+  height: 42,
+  marginLeft: 8,
+  alignItems: "center",
+  justifyContent: "center",
+  borderRadius: 8,
+  backgroundColor: "#fdecea"
+},
+
+amaAddButton: {
+  flexDirection: "row",
+  alignItems: "center",
+  alignSelf: "flex-start",
+  paddingVertical: 8,
+  paddingHorizontal: 10,
+  borderRadius: 8,
+  backgroundColor: "#eaf7f5"
+},
+
+amaAddButtonText: {
+  marginLeft: 6,
+  color: "#1f9c8b",
+  fontSize: 13,
+  fontWeight: "600"
 },
   selectItem: {
     flexDirection: "row",

@@ -4,6 +4,46 @@ import { normalizeAppointment } from "./normalizeAppointment";
 
 export const API_BASE_URL = 
   "https://field-inspections-backend-production.up.railway.app/api";
+function normalizeAmaNumbers(value) {
+  const sourceValues = Array.isArray(value) ? value : [value];
+
+  return [
+    ...new Set(
+      sourceValues
+        .flatMap(item =>
+          String(item ?? "").split(/[,\n;]/)
+        )
+        .map(item => item.trim())
+        .filter(Boolean)
+    )
+  ];
+}
+
+function getCustomerAmaNumbers(customer) {
+  const arrayValue =
+    customer?.amaNumbers ??
+    customer?.ama_numbers;
+
+  return normalizeAmaNumbers(
+    Array.isArray(arrayValue) && arrayValue.length > 0
+      ? arrayValue
+      : customer?.ama
+  );
+}
+
+function normalizeCustomerAma(customer) {
+  if (!customer || typeof customer !== "object") {
+    return customer;
+  }
+
+  const amaNumbers = getCustomerAmaNumbers(customer);
+
+  return {
+    ...customer,
+    amaNumbers,
+    ama: amaNumbers.join(", ")
+  };
+}
 
 let authToken = null;
 
@@ -511,23 +551,73 @@ const apiService = {
     }
 
     // Format customers consistently
-    const formattedCustomers = customersArray.map(c => ({
-      customerId: String(c.customerId ?? c.id ?? c.customer_id ?? ''),
-      customerName: c.customerName ?? c.name ?? c.customer_name ?? 'Unknown Customer',
-      email: c.email ?? '',
-      address: c.address ?? '',
-      telephone: c.telephone ?? '',
-      tin: c.tin ?? c.afm ?? c.taxIdentificationNumber ?? '',
-      ama: c.ama ?? '',
-      complianceValidUntil: c.complianceValidUntil ?? c.compliance_valid_until ?? null,
-      maps: Array.isArray(c.maps) ? c.maps : []
-    }));
+    const formattedCustomers = customersArray.map(c => {
+      const amaNumbers = getCustomerAmaNumbers(c);
+
+      return {
+        customerId: String(
+          c.customerId ??
+          c.id ??
+          c.customer_id ??
+          ""
+        ),
+
+        customerName:
+          c.customerName ??
+          c.name ??
+          c.customer_name ??
+          "Unknown Customer",
+
+        email: c.email ?? "",
+        address: c.address ?? "",
+        telephone: c.telephone ?? "",
+
+        tin:
+          c.tin ??
+          c.afm ??
+          c.taxIdentificationNumber ??
+          "",
+
+        amaNumbers,
+        ama: amaNumbers.join(", "),
+
+        complianceValidUntil:
+          c.complianceValidUntil ??
+          c.compliance_valid_until ??
+          null,
+
+        maps: Array.isArray(c.maps) ? c.maps : []
+      };
+    });
     
     return formattedCustomers;
   },
   
   async getCustomerById(id) {
-    return request("GET", `/customers/${id}`);
+    const result = await request(
+      "GET",
+      `/customers/${encodeURIComponent(id)}`
+    );
+
+    if (!result || result.success === false) {
+      return result;
+    }
+
+    if (result.data && typeof result.data === "object") {
+      return {
+        ...result,
+        data: normalizeCustomerAma(result.data)
+      };
+    }
+
+    if (result.customer && typeof result.customer === "object") {
+      return {
+        ...result,
+        customer: normalizeCustomerAma(result.customer)
+      };
+    }
+
+    return normalizeCustomerAma(result);
   },
 
   async createCustomer(data) {
