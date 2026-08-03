@@ -64,7 +64,7 @@ export default function LoginScreen({
       }
     } else {
       // For mobile, use React Native Alert
-      showAlert(title, message, buttons);
+      Alert.alert(title, message, buttons);
     }
   };
 
@@ -84,7 +84,11 @@ export default function LoginScreen({
 
     if (result.role === "admin") {
       await apiService.setAuthToken(result.token);
-      onAdminLogin();
+
+      onAdminLogin(
+        result.mustChangePassword === true
+      );
+
       return;
     }
 

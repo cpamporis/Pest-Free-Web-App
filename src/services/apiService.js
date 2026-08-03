@@ -421,11 +421,14 @@ const apiService = {
       }
     }
 
-    if (result.role === "admin" || result.role === "super_admin") {
+    if (result.role === "admin") {
       return {
         success: true,
-        role: result.role,
-        token: result.token
+        role: "admin",
+        token: result.token,
+        mustChangePassword:
+          result.mustChangePassword === true ||
+          result.must_change_password === true
       };
     }
 
