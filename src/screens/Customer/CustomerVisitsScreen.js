@@ -9,12 +9,15 @@ import {
   StyleSheet,
   RefreshControl,
   StatusBar,
-  Platform
+  Platform,
+  Alert
 } from "react-native";
 import apiService from "../../services/apiService";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { MaterialIcons, FontAwesome5, Ionicons, Feather } from '@expo/vector-icons';
-import { formatTimeInGreece, formatDateInGreece } from "../../utils/timeZoneUtils";
+import {
+  formatTimeInGreece
+} from "../../utils/timeZoneUtils";
 import i18n from "../../services/i18n";
 
 let Sharing, FileSystem;
@@ -22,6 +25,61 @@ if (Platform.OS !== 'web') {
   Sharing = require('expo-sharing');
   FileSystem = require('expo-file-system');
 }
+const WEEKDAY_KEYS = [
+  "sun", "mon", "tue", "wed", "thu", "fri", "sat"
+];
+
+const MONTH_KEYS = [
+  "jan", "feb", "mar", "apr", "may", "jun",
+  "jul", "aug", "sep", "oct", "nov", "dec"
+];
+
+const CERTIFICATE_SERVICE_TYPES = [
+  "certificate",
+  "certification",
+  "st"
+];
+
+const normalizeVisitServiceType = (value) => {
+  const rawValue =
+    value && typeof value === "object"
+      ? value.serviceType ??
+        value.service_type ??
+        value.serviceCategory ??
+        value.service_category ??
+        ""
+      : value;
+
+  return String(rawValue || "").trim().toLowerCase();
+};
+
+const isCertificateServiceType = (value) =>
+  CERTIFICATE_SERVICE_TYPES.includes(
+    normalizeVisitServiceType(value)
+  );
+
+const getVisitDate = (visit) =>
+  visit.appointmentDate ??
+  visit.appointment_date ??
+  visit.startTime ??
+  visit.start_time ??
+  visit.date ??
+  visit.createdAt ??
+  visit.created_at ??
+  null;
+
+const getVisitYear = (value) => {
+  if (!value) return null;
+
+  const directYear = String(value).match(/^(\d{4})/);
+  if (directYear) return Number(directYear[1]);
+
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime())
+    ? null
+    : date.getFullYear();
+};
 
 export default function CustomerVisitsScreen({ 
   onSelectVisit, 
@@ -65,7 +123,7 @@ export default function CustomerVisitsScreen({
       }
     } else {
       // For mobile, use React Native Alert
-      showAlert(title, message, buttons);
+      Alert.alert(title, message, buttons);
     }
   };
 
@@ -77,22 +135,46 @@ export default function CustomerVisitsScreen({
         let visitsData = res.visits || [];
         
         // Process each visit to ensure consistent format
-        const processedVisits = visitsData.map(visit => ({
-          ...visit,
-          // Ensure visitId exists
-          visitId: visit.visitId || visit.id || visit.visit_id,
-          // Ensure serviceType is set
-          serviceType: visit.serviceType || visit.service_type || 'myocide',
-          // Format service type for display
-          serviceTypeDisplay: visit.serviceTypeDisplay || 
-                            formatServiceTypeDisplay(visit.serviceType || visit.service_type, 
-                                                      visit.serviceSubtype, 
-                                                      visit.otherPestName),
-          // Ensure timestamp exists
-          startTime: visit.startTime || visit.start_time || visit.createdAt,
-        }));
-        
-        setVisits(processedVisits);
+        const processedVisits = visitsData.map((visit) => {
+          const serviceType =
+            normalizeVisitServiceType(visit) || "myocide";
+
+          return {
+            ...visit,
+            visitId: visit.visitId || visit.id || visit.visit_id,
+            serviceType,
+
+            serviceTypeDisplay: isCertificateServiceType(serviceType)
+              ? i18n.t("serviceTypes.certificate")
+              : visit.serviceTypeDisplay ||
+                formatServiceTypeDisplay(
+                  serviceType,
+                  visit.serviceSubtype ?? visit.service_subtype,
+                  visit.otherPestName ?? visit.other_pest_name
+                ),
+
+            startTime:
+              visit.startTime ||
+              visit.start_time ||
+              visit.createdAt ||
+              visit.created_at,
+          };
+        });
+
+        const seenVisitIds = new Set();
+
+        const uniqueVisits = processedVisits.filter((visit) => {
+          if (!visit.visitId) return true;
+
+          const key = String(visit.visitId);
+
+          if (seenVisitIds.has(key)) return false;
+
+          seenVisitIds.add(key);
+          return true;
+        });
+
+        setVisits(uniqueVisits);
       } else {
         showAlert(i18n.t("common.error"), res?.error || i18n.t("customer.visits.errors.loadFailed"));
         setVisits([]);
@@ -116,166 +198,310 @@ export default function CustomerVisitsScreen({
     await loadVisits();
   };
 
-  const formatTime24WithSuffix = (dateString) => {
-    if (!dateString) return "—";
-    return formatTimeInGreece(dateString);
+  const formatVisitDate = (value) => {
+  if (!value) return "—";
+
+  const rawValue = String(value);
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(rawValue)
+    ? new Date(`${rawValue}T00:00:00`)
+    : new Date(value);
+
+  if (Number.isNaN(date.getTime())) return rawValue;
+
+  const weekday = i18n.t(
+    `weekdays.short.${WEEKDAY_KEYS[date.getDay()]}`
+  );
+
+  const month = i18n.t(
+    `months.${MONTH_KEYS[date.getMonth()]}`
+  );
+
+  return `${weekday}, ${date.getDate()} ${month} ${date.getFullYear()}`;
+};
+
+const formatVisitTime = (value) => {
+  if (!value) return "—";
+
+  try {
+    return new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Europe/Athens",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).format(new Date(value));
+  } catch {
+    return formatTimeInGreece(value);
+  }
+};
+
+const getCertificateCopy = (year) => {
+  const locale = String(i18n.getLocale() || "").toLowerCase();
+
+  const isGreek =
+    locale.startsWith("el") ||
+    locale.startsWith("gr");
+
+  return {
+    label: isGreek ? "Πιστοποιητικό" : "Certificate",
+
+    title: isGreek
+      ? "Λήψη πιστοποιητικού"
+      : "Download Certificate",
+
+    unavailable: isGreek
+      ? "Το πιστοποιητικό είναι διαθέσιμο μόνο για το τρέχον έτος."
+      : "The certificate is available only for the current year.",
+
+    year,
   };
+};
 
   // Download PDF report
-  const downloadPDFReport = async (visit) => {
-    try {
-      setDownloadingId(visit.visitId);
-      
-      const reportId = visit.visitId;
-      
-      if (!reportId) {
-        showAlert(i18n.t("common.error"), i18n.t("customer.visits.errors.noReportId"));
-        return;
+  const downloadPDFReport = async (
+  visit,
+  documentType = "report"
+) => {
+  try {
+    const reportId = visit.visitId;
+    const isCertificate =
+      documentType === "certificate";
+
+    const certificateYear = getVisitYear(
+      getVisitDate(visit)
+    );
+
+    const currentYear = new Date().getFullYear();
+    const certificateCopy =
+      getCertificateCopy(certificateYear);
+
+    if (
+      isCertificate &&
+      certificateYear !== currentYear
+    ) {
+      showAlert(
+        certificateCopy.title,
+        certificateCopy.unavailable
+      );
+
+      return;
+    }
+
+    if (!reportId) {
+      showAlert(
+        i18n.t("common.error"),
+        i18n.t("customer.visits.errors.noReportId")
+      );
+
+      return;
+    }
+
+    setDownloadingId(`${reportId}:${documentType}`);
+
+    const token = apiService.getCurrentToken();
+
+    if (!token) {
+      showAlert(
+        i18n.t("common.error"),
+        i18n.t("customer.visits.errors.authRequired")
+      );
+
+      return;
+    }
+
+    const dateStr = visit.startTime
+      ? new Date(visit.startTime)
+          .toISOString()
+          .split("T")[0]
+      : new Date().toISOString().split("T")[0];
+
+    const safeName = (
+      visit.customer_name ||
+      visit.customerName ||
+      "customer"
+    )
+      .replace(/[^a-z0-9]/gi, "_")
+      .replace(/^_+|_+$/g, "");
+
+    const fileName = isCertificate
+      ? `Certificate_${safeName}_${certificateYear}.pdf`
+      : `Service_Report_${safeName}_${dateStr}.pdf`;
+
+    const apiBaseUrl =
+      apiService.API_BASE_URL ||
+      "http://192.168.1.79:3000/api";
+
+    const encodedReportId =
+      encodeURIComponent(reportId);
+
+    const encodedLanguage = encodeURIComponent(
+      i18n.getLocale() || "en"
+    );
+
+    const url = isCertificate
+      ? typeof apiService.getCertificatePdfUrl === "function"
+        ? apiService.getCertificatePdfUrl(reportId)
+        : `${apiBaseUrl}/certificates/pdf/${encodedReportId}`
+      : typeof apiService.getReportPdfUrl === "function"
+        ? apiService.getReportPdfUrl(
+            reportId,
+            i18n.getLocale()
+          )
+        : `${apiBaseUrl}/reports/pdf/${encodedReportId}?lang=${encodedLanguage}`;
+
+    if (Platform.OS === "web") {
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          `HTTP error! status: ${response.status}`
+        );
       }
-      
-      const token = apiService.getCurrentToken();
-      if (!token) {
-        showAlert(i18n.t("common.error"), i18n.t("customer.visits.errors.authRequired"));
-        return;
-      }
-      
-      const lang = i18n.getLocale();
-      const API_BASE_URL = apiService.API_BASE_URL || "http://192.168.1.79:3000/api";
-      const url = `${API_BASE_URL}/reports/pdf/${reportId}?lang=${lang}`;
-      
-      // Create filename
-      const dateStr = visit.startTime ? 
-        new Date(visit.startTime).toISOString().split('T')[0] : 
-        new Date().toISOString().split('T')[0];
-      
-      const safeName = (visit.customer_name || visit.customerName || 'customer')
-        .replace(/[^a-z0-9]/gi, '_')
-        .replace(/^_+|_+$/g, '');
-      
-      const fileName = `Service_Report_${safeName}_${dateStr}.pdf`;
-      
-      // Web platform - use anchor tag download with fetch
-      if (Platform.OS === 'web') {
-        try {
-          // Use fetch to get the blob with authentication
-          const response = await fetch(url, {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-            },
-          });
-          
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-          
-          const blob = await response.blob();
-          const blobUrl = window.URL.createObjectURL(blob);
-          
-          // Create and trigger download
-          const link = document.createElement('a');
-          link.href = blobUrl;
-          link.download = fileName;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          
-          // Clean up
-          window.URL.revokeObjectURL(blobUrl);
-          
-          showAlert(
-            i18n.t("customer.visits.alerts.downloadComplete"),
-            i18n.t("customer.visits.alerts.downloadStarted"),
-            [{ text: i18n.t("common.ok") || "OK" }]
-          );
-          
-          setDownloadingId(null);
-          return;
-        } catch (webError) {
-          console.error("❌ Web download error:", webError);
-          throw webError;
-        }
-      }
-      
-      // For mobile - use FileSystem (only reached if not web)
-      if (!FileSystem || !Sharing) {
-        throw new Error("FileSystem modules not available on this platform");
-      }
-      
-      const getDownloadDirectory = () => {
-        if (FileSystem.documentDirectory) {
-          return FileSystem.documentDirectory;
-        }
-        if (FileSystem.cacheDirectory) {
-          return FileSystem.cacheDirectory;
-        }
-        throw new Error("No suitable directory available for download");
-      };
-      
-      const downloadDir = getDownloadDirectory();
-      const fileUri = downloadDir + fileName;
-      
-      const downloadResumable = FileSystem.createDownloadResumable(
+
+      const blob = await response.blob();
+      const blobUrl =
+        window.URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = fileName;
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      window.URL.revokeObjectURL(blobUrl);
+
+      showAlert(
+        isCertificate
+          ? certificateCopy.title
+          : i18n.t(
+              "customer.visits.alerts.downloadComplete"
+            ),
+
+        i18n.t(
+          "components.swipeableVisitRow.downloadStarted"
+        ),
+
+        [{ text: i18n.t("common.ok") || "OK" }]
+      );
+
+      return;
+    }
+
+    // Preserve the existing native fallback.
+    if (!FileSystem || !Sharing) {
+      throw new Error(
+        "FileSystem modules not available on this platform"
+      );
+    }
+
+    const downloadDir =
+      FileSystem.documentDirectory ||
+      FileSystem.cacheDirectory;
+
+    if (!downloadDir) {
+      throw new Error(
+        "No suitable directory available for download"
+      );
+    }
+
+    const fileUri = downloadDir + fileName;
+
+    const downloadResumable =
+      FileSystem.createDownloadResumable(
         url,
         fileUri,
         {
           headers: {
-            'Authorization': `Bearer ${token}`,
+            Authorization: `Bearer ${token}`,
           },
-        },
-        (downloadProgress) => {
-          // You can track progress here if needed
-          const progress = downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite;
         }
       );
 
-      const { uri } = await downloadResumable.downloadAsync();
-      
-      const canShare = await Sharing.isAvailableAsync();
-      
-      if (canShare) {
-        await Sharing.shareAsync(uri, {
-          mimeType: 'application/pdf',
-          dialogTitle: i18n.t("customer.visits.alerts.downloadComplete"),
-          UTI: 'com.adobe.pdf'
-        });
-      } else {
-        showAlert(
-          i18n.t("customer.visits.alerts.downloadComplete"),
-          i18n.t("customer.visits.alerts.downloadCompleteMessage", { path: uri }),
-          [{ text: i18n.t("common.ok") || "OK" }]
-        );
-      }
-      
-    } catch (error) {
-      console.error("❌ PDF download error:", error);
-      
-      let errorMessage = error.message;
-      
-      if (error.message.includes('Network request failed')) {
-        errorMessage = i18n.t("customer.visits.errors.network");
-      } else if (error.message.includes('401') || error.message.includes('403')) {
-        errorMessage = i18n.t("customer.visits.errors.auth");
-      } else if (error.message.includes('404')) {
-        errorMessage = i18n.t("customer.visits.errors.notFound");
-      } else if (error.message.includes('Document directory not available')) {
-        errorMessage = i18n.t("customer.visits.errors.storage");
-      }
-      
+    const { uri } =
+      await downloadResumable.downloadAsync();
+
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(uri, {
+        mimeType: "application/pdf",
+
+        dialogTitle: isCertificate
+          ? certificateCopy.title
+          : i18n.t(
+              "customer.visits.alerts.downloadComplete"
+            ),
+
+        UTI: "com.adobe.pdf",
+      });
+    } else {
       showAlert(
-        i18n.t("customer.visits.alerts.downloadFailed"),
-        errorMessage || i18n.t("customer.visits.errors.downloadFailed")
+        i18n.t(
+          "customer.visits.alerts.downloadComplete"
+        ),
+
+        i18n.t(
+          "customer.visits.alerts.downloadCompleteMessage",
+          { path: uri }
+        ),
+
+        [{ text: i18n.t("common.ok") || "OK" }]
       );
-    } finally {
-      setDownloadingId(null);
     }
-  };
+  } catch (error) {
+    console.error("❌ PDF download error:", error);
+
+    let errorMessage = error.message;
+
+    if (error.message.includes("Network request failed")) {
+      errorMessage = i18n.t(
+        "components.swipeableVisitRow.errors.network"
+      );
+    } else if (
+      error.message.includes("401") ||
+      error.message.includes("403")
+    ) {
+      errorMessage = i18n.t(
+        "components.swipeableVisitRow.errors.auth"
+      );
+    } else if (error.message.includes("404")) {
+      errorMessage = i18n.t(
+        "components.swipeableVisitRow.errors.notFound"
+      );
+    } else if (
+      error.message.includes("directory") ||
+      error.message.includes("storage")
+    ) {
+      errorMessage = i18n.t(
+        "components.swipeableVisitRow.errors.storage"
+      );
+    }
+
+    showAlert(
+      i18n.t("customer.visits.alerts.downloadFailed"),
+
+      errorMessage ||
+        i18n.t(
+          "customer.visits.errors.downloadFailed"
+        )
+    );
+  } finally {
+    setDownloadingId(null);
+  }
+};
 
   const formatServiceTypeDisplay = (serviceType, subtype, otherPestName) => {
     if (!serviceType) return i18n.t("customer.visits.serviceTypes.default") || 'Service';
     
     const type = String(serviceType).toLowerCase();
+    if (isCertificateServiceType(type)) {
+  return i18n.t("serviceTypes.certificate");
+}
     
-    if (type === 'myocide' || type.includes('myocide')) {
+    else if (type === 'myocide' || type.includes('myocide')) {
       return i18n.t("customer.visits.serviceTypes.myocide");
     } else if (type === 'disinfection' || type.includes('disinfection')) {
       return i18n.t("customer.visits.serviceTypes.disinfection");
@@ -335,7 +561,9 @@ export default function CustomerVisitsScreen({
 
     const visitPayload = {
       visitId: visitId,
-      serviceType: visit.serviceType || visit.service_type || "myocide",
+      serviceType:
+        normalizeVisitServiceType(visit) ||
+        "myocide",
       customerName: visit.customerName || visit.customer_name || i18n.t("customer.welcome.customer"),
       technicianName: visit.technicianName || visit.technician_name || i18n.t("customer.visits.card.technician"),
       startTime: visit.startTime || visit.start_time || visit.createdAt
@@ -344,10 +572,26 @@ export default function CustomerVisitsScreen({
   };
 
   const renderVisitItem = ({ item }) => {
-    const serviceType = item.serviceType || 'myocide';
-    const serviceDisplay = item.serviceTypeDisplay || formatServiceTypeDisplay(serviceType);
+    const serviceType = item.serviceType || "myocide";
+
+    const serviceDisplay = formatServiceTypeDisplay(
+      serviceType,
+      item.serviceSubtype ?? item.service_subtype,
+      item.otherPestName ?? item.other_pest_name
+    );
+
     const iconName = getServiceIcon(serviceType);
     const color = getServiceColor(serviceType);
+
+    const visitDate = getVisitDate(item);
+    const certificateYear = getVisitYear(visitDate);
+
+    const canDownloadCertificate =
+      isCertificateServiceType(serviceType) &&
+      certificateYear === new Date().getFullYear();
+
+    const certificateCopy =
+      getCertificateCopy(certificateYear);
 
     return (
       <TouchableOpacity
@@ -372,9 +616,11 @@ export default function CustomerVisitsScreen({
           <View style={styles.detailRow}>
             <MaterialIcons name="calendar-today" size={16} color="#666" />
             <Text style={styles.detailText}>
-              {item.startTime 
-                ? formatDateInGreece(item.startTime)
-                : i18n.t("customer.visits.card.dateNotAvailable")}
+              {item.startTime
+                ? formatVisitDate(item.startTime)
+                : i18n.t(
+                    "customer.visits.card.dateNotAvailable"
+                  )}
             </Text>
           </View>
           
@@ -382,8 +628,10 @@ export default function CustomerVisitsScreen({
             <MaterialIcons name="schedule" size={16} color="#666" />
             <Text style={styles.detailText}>
               {item.startTime
-                ? formatTimeInGreece(item.startTime)
-                : i18n.t("customer.visits.card.timeNotAvailable")}
+                ? formatVisitTime(item.startTime)
+                : i18n.t(
+                    "customer.visits.card.timeNotAvailable"
+                  )}
             </Text>
           </View>
           
@@ -413,19 +661,67 @@ export default function CustomerVisitsScreen({
             </TouchableOpacity>
             
             <TouchableOpacity
-              style={styles.downloadButton}
-              onPress={() => downloadPDFReport(item)}
-              disabled={downloadingId === item.visitId}
-            >
-              {downloadingId === item.visitId ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <>
-                  <MaterialIcons name="picture-as-pdf" size={16} color="#fff" />
-                  <Text style={styles.downloadButtonText}>{i18n.t("customer.visits.card.downloadPDF")}</Text>
-                </>
-              )}
-            </TouchableOpacity>
+  style={styles.downloadButton}
+  onPress={() =>
+    downloadPDFReport(item, "report")
+  }
+  disabled={
+    downloadingId === `${item.visitId}:report`
+  }
+>
+  {downloadingId === `${item.visitId}:report` ? (
+    <ActivityIndicator size="small" color="#fff" />
+  ) : (
+    <>
+      <MaterialIcons
+        name="picture-as-pdf"
+        size={16}
+        color="#fff"
+      />
+
+      <Text style={styles.downloadButtonText}>
+        {i18n.t(
+          "customer.visits.card.downloadPDF"
+        )}
+      </Text>
+    </>
+  )}
+</TouchableOpacity>
+{canDownloadCertificate && (
+  <TouchableOpacity
+    style={[
+      styles.downloadButton,
+      { backgroundColor: "#c3922e" },
+    ]}
+    onPress={() =>
+      downloadPDFReport(item, "certificate")
+    }
+    disabled={
+      downloadingId ===
+      `${item.visitId}:certificate`
+    }
+  >
+    {downloadingId ===
+    `${item.visitId}:certificate` ? (
+      <ActivityIndicator
+        size="small"
+        color="#fff"
+      />
+    ) : (
+      <>
+        <MaterialIcons
+          name="verified"
+          size={16}
+          color="#fff"
+        />
+
+        <Text style={styles.downloadButtonText}>
+          {certificateCopy.label}
+        </Text>
+      </>
+    )}
+  </TouchableOpacity>
+)}
           </View>
         </View>
       </TouchableOpacity>
@@ -497,7 +793,14 @@ export default function CustomerVisitsScreen({
       ) : (
         <FlatList
           data={visits}
-          keyExtractor={(item, index) => `${item.visitId}_${item.source || "visit"}_${index}`}
+          keyExtractor={(item, index) =>
+            String(
+              item.visitId ||
+              item.id ||
+              item.visit_id ||
+              `visit-${index}`
+            )
+          }
           renderItem={renderVisitItem}
           contentContainerStyle={styles.listContainer}
           showsVerticalScrollIndicator={false}
@@ -531,8 +834,10 @@ const getServiceColor = (serviceType) => {
 
 const getServiceIcon = (serviceType) => {
   const type = String(serviceType || '').toLowerCase();
-  
-  if (type.includes('myocide')) {
+  if (isCertificateServiceType(type)) {
+  return "verified";
+}
+  else if (type.includes('myocide')) {
     return 'pest-control-rodent';
   } else if (type.includes('disinfection')) {
     return 'clean-hands';
@@ -547,9 +852,11 @@ const getServiceIcon = (serviceType) => {
 
 const formatServiceType = (serviceType) => {
   const type = String(serviceType || '').toLowerCase().trim();
-  
+  if (isCertificateServiceType(type)) {
+  return i18n.t("serviceTypes.certificate");
+}
   // Map service types to display names
-  if (type.includes('myocide') || type.includes('scheduled')) {
+ else if (type.includes('myocide') || type.includes('scheduled')) {
     return i18n.t("customer.visits.serviceTypes.myocide");
   } else if (type.includes('disinfection')) {
     return i18n.t("customer.visits.serviceTypes.disinfection");

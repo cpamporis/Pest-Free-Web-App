@@ -1,9 +1,8 @@
 //CustomerHome.notifications.js
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import apiService from "../../services/apiService";
-import { Alert } from "react-native";
+import { Alert, Platform } from "react-native";
 import i18n from "../../services/i18n";
-import {Platform} from "react-native";
 
 // Storage keys
 export const NOTIFICATIONS_STORAGE_KEY = "@PestFree_CustomerNotifications";
@@ -60,6 +59,92 @@ export const notificationTypes = {
     getTitle: () => i18n.t("customer.notificationTypes.reschedule_declined.title"),
     getDescription: () => i18n.t("customer.notificationTypes.reschedule_declined.description"),
   },
+};
+
+const resolveNotificationServiceType = (notification) => {
+  const metadata =
+    notification.metadata &&
+    typeof notification.metadata === "object"
+      ? notification.metadata
+      : {};
+
+  const data =
+    notification.data &&
+    typeof notification.data === "object"
+      ? notification.data
+      : {};
+
+  const explicitType =
+    notification.serviceType ??
+    notification.service_type ??
+    notification.serviceCategory ??
+    notification.service_category ??
+    notification.workType ??
+    notification.work_type ??
+    notification.appointment?.serviceType ??
+    notification.appointment?.service_type ??
+    metadata.serviceType ??
+    metadata.service_type ??
+    data.serviceType ??
+    data.service_type ??
+    "";
+
+  const searchableText = [
+    explicitType,
+    notification.serviceTypeDisplay,
+    notification.service_type_display,
+    notification.title,
+    notification.description,
+    notification.message,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  const normalizedExplicitType = String(explicitType)
+    .trim()
+    .toLowerCase();
+
+  if (
+    normalizedExplicitType === "st" ||
+    searchableText.includes("certificate") ||
+    searchableText.includes("certification") ||
+    searchableText.includes("πιστοποι")
+  ) {
+    return "certificate";
+  }
+
+  if (
+    searchableText.includes("myocide") ||
+    searchableText.includes("rodent") ||
+    searchableText.includes("μυοκτον")
+  ) {
+    return "myocide";
+  }
+
+  if (
+    searchableText.includes("disinfection") ||
+    searchableText.includes("απολύμαν")
+  ) {
+    return "disinfection";
+  }
+
+  if (
+    searchableText.includes("insecticide") ||
+    searchableText.includes("απεντόμ")
+  ) {
+    return "insecticide";
+  }
+
+  if (
+    searchableText.includes("special") ||
+    searchableText.includes("ειδική") ||
+    searchableText.includes("ειδικη")
+  ) {
+    return "special";
+  }
+
+  return normalizedExplicitType || null;
 };
 
   const formatTimeAgo = (dateString) => {
@@ -140,7 +225,8 @@ export const notificationTypes = {
         // Process notifications with translations
         const notificationsWithReadStatus = result.notifications.map(notification => {
           const isRead = notification.status === "read" || !!notification.readAt || combinedReadIds.includes(notification.id);
-          
+          const resolvedServiceType =
+  resolveNotificationServiceType(notification);
           // Find notification type template
           const typeTemplate = Object.values(notificationTypes).find(nt => nt.type === notification.type);
           
@@ -167,11 +253,28 @@ export const notificationTypes = {
           }
           
           return {
-            ...notification,
-            title,
-            description,
-            isRead
-          };
+  ...notification,
+
+  serviceType: resolvedServiceType,
+
+  specialServiceSubtype:
+    notification.specialServiceSubtype ??
+    notification.special_service_subtype ??
+    notification.metadata?.specialServiceSubtype ??
+    notification.metadata?.special_service_subtype ??
+    null,
+
+  otherPestName:
+    notification.otherPestName ??
+    notification.other_pest_name ??
+    notification.metadata?.otherPestName ??
+    notification.metadata?.other_pest_name ??
+    null,
+
+  title,
+  description,
+  isRead,
+};
         });
         
         setNotifications(notificationsWithReadStatus);
@@ -248,7 +351,7 @@ export const notificationTypes = {
       }
     } else {
       // For mobile, use React Native Alert
-      showAlert(title, message, buttons);
+      Alert.alert(title, message, buttons);
     }
   };  
 
