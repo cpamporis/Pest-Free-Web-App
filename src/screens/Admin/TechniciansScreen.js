@@ -19,6 +19,40 @@ import apiService from "../../services/apiService";
 import pestfreeLogo from "../../../assets/pestfree_logo.png";
 import i18n from "../../services/i18n";
 
+function showAlert(title, message, buttons = []) {
+  const safeTitle = title == null ? "" : String(title);
+  const safeMessage = message == null ? "" : String(message);
+  const alertButtons = Array.isArray(buttons) ? buttons.filter(Boolean) : [];
+
+  if (Platform.OS !== "web" || typeof window === "undefined") {
+    return Alert.alert(
+      safeTitle,
+      safeMessage,
+      alertButtons.length > 0 ? alertButtons : undefined
+    );
+  }
+
+  const dialogText = [safeTitle, safeMessage].filter(Boolean).join("\n\n");
+
+  if (alertButtons.length <= 1) {
+    window.alert(dialogText);
+    return alertButtons[0]?.onPress?.();
+  }
+
+  const cancelButton =
+    alertButtons.find((button) => button.style === "cancel") || alertButtons[0];
+  const actionButton =
+    alertButtons.find((button) => button.style === "destructive") ||
+    alertButtons.find((button) => button !== cancelButton) ||
+    alertButtons[alertButtons.length - 1];
+
+  const selectedButton = window.confirm(dialogText)
+    ? actionButton
+    : cancelButton;
+
+  return selectedButton?.onPress?.();
+}
+
 // Technician Modal Component
 const TechnicianModal = ({ isEdit, visible, onClose, onSubmit, technician, loading }) => {
   const [formData, setFormData] = useState({
@@ -56,7 +90,7 @@ const TechnicianModal = ({ isEdit, visible, onClose, onSubmit, technician, loadi
 
   const handleSubmit = () => {
     if (!formData.firstName || !formData.lastName || !formData.username || !formData.email || (!isEdit && !formData.password)) {
-      Alert.alert(i18n.t("common.error"), i18n.t("admin.technicians.addModal.requiredFields") || "Please fill all required fields (*)");
+      showAlert(i18n.t("common.error"), i18n.t("admin.technicians.addModal.requiredFields") || "Please fill all required fields (*)");
       return;
     }
 
@@ -272,7 +306,7 @@ export default function TechniciansScreen({ onClose }) {
 
     } catch (error) {
       console.error("Failed to load technicians:", error);
-      Alert.alert(i18n.t("common.error"), i18n.t("admin.technicians.loadingError") || "Failed to load technicians. Check backend connection.");
+      showAlert(i18n.t("common.error"), i18n.t("admin.technicians.loadingError") || "Failed to load technicians. Check backend connection.");
       setTechnicians([]);
     } finally {
       setLoading(false);
@@ -302,15 +336,15 @@ export default function TechniciansScreen({ onClose }) {
       const result = await apiService.createTechnician(newTech);
       
       if (result && result.success) {
-        Alert.alert(i18n.t("common.success"), i18n.t("admin.technicians.addModal.success") || "Technician added successfully");
+        showAlert(i18n.t("common.success"), i18n.t("admin.technicians.addModal.success") || "Technician added successfully");
         setShowAddModal(false);
         loadTechnicians();
         loadUsage();
       } else {
-        Alert.alert(i18n.t("common.error"), result?.error || i18n.t("admin.technicians.addModal.failed") || "Failed to add technician");
+        showAlert(i18n.t("common.error"), result?.error || i18n.t("admin.technicians.addModal.failed") || "Failed to add technician");
       }
     } catch (error) {
-      Alert.alert(i18n.t("common.error"), error.message || i18n.t("admin.technicians.addModal.failed") || "Failed to add technician");
+      showAlert(i18n.t("common.error"), error.message || i18n.t("admin.technicians.addModal.failed") || "Failed to add technician");
     } finally {
       setSaveLoading(false);
     }
@@ -333,15 +367,15 @@ export default function TechniciansScreen({ onClose }) {
       const result = await apiService.updateTechnician(selectedTechnician.technicianId, updatedTech);
       
       if (result && result.success) {
-        Alert.alert(i18n.t("common.success"), i18n.t("admin.technicians.editModal.success") || "Technician updated successfully");
+        showAlert(i18n.t("common.success"), i18n.t("admin.technicians.editModal.success") || "Technician updated successfully");
         setShowEditModal(false);
         setSelectedTechnician(null);
         loadTechnicians();
       } else {
-        Alert.alert(i18n.t("common.error"), result?.error || i18n.t("admin.technicians.editModal.failed") || "Failed to update technician");
+        showAlert(i18n.t("common.error"), result?.error || i18n.t("admin.technicians.editModal.failed") || "Failed to update technician");
       }
     } catch (error) {
-      Alert.alert(i18n.t("common.error"), error.message || i18n.t("admin.technicians.editModal.failed") || "Failed to update technician");
+      showAlert(i18n.t("common.error"), error.message || i18n.t("admin.technicians.editModal.failed") || "Failed to update technician");
     } finally {
       setSaveLoading(false);
     }
@@ -362,14 +396,14 @@ export default function TechniciansScreen({ onClose }) {
       const result = await apiService.deleteTechnician(technicianToDelete);
       
       if (result && result.success) {
-        Alert.alert(i18n.t("common.success"), i18n.t("admin.technicians.deleteModal.success") || "Technician deleted successfully");
+        showAlert(i18n.t("common.success"), i18n.t("admin.technicians.deleteModal.success") || "Technician deleted successfully");
         loadTechnicians();
         loadUsage();
       } else {
-        Alert.alert(i18n.t("common.error"), result?.error || i18n.t("admin.technicians.deleteModal.failed") || "Failed to delete technician");
+        showAlert(i18n.t("common.error"), result?.error || i18n.t("admin.technicians.deleteModal.failed") || "Failed to delete technician");
       }
     } catch (error) {
-      Alert.alert(i18n.t("common.error"), error.message || i18n.t("admin.technicians.deleteModal.failed") || "Failed to delete technician");
+      showAlert(i18n.t("common.error"), error.message || i18n.t("admin.technicians.deleteModal.failed") || "Failed to delete technician");
     } finally {
       setDeleteConfirm(false);
       setTechnicianToDelete(null);
@@ -522,7 +556,7 @@ export default function TechniciansScreen({ onClose }) {
             style={styles.addButton}
             onPress={() => {
               if (usage && usage.technicians.used >= usage.technicians.max) {
-                Alert.alert(
+                showAlert(
                   i18n.t("limits.title"),
                   i18n.t("limits.techniciansReached", {
                     max: usage.technicians.max

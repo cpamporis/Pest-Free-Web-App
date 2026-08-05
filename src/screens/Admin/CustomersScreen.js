@@ -117,7 +117,12 @@ function filterCustomersBySearch(customers, searchText) {
 
 function getCustomerSearchCopy() {
   const locale = String(
-    i18n.locale || i18n.language || ""
+    i18n.resolvedLanguage ||
+    i18n.language ||
+    i18n.currentLang ||
+    i18n.getLocale?.() ||
+    i18n.locale ||
+    ""
   ).toLocaleLowerCase();
 
   const isGreek =
@@ -126,7 +131,7 @@ function getCustomerSearchCopy() {
 
   return {
     placeholder: isGreek
-      ? "Αναζήτηση πελάτη..."
+      ? "Αναζήτηση Πελάτη..."
       : "Search customer...",
 
     noResults: isGreek

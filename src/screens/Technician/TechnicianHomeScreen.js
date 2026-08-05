@@ -857,6 +857,15 @@ export default function TechnicianHomeScreen({
               hideExtraDays={true}
               firstDay={1}
               enableSwipeMonths={true}
+
+              renderArrow={(direction) => (
+                <MaterialIcons
+                  name={direction === "left" ? "chevron-left" : "chevron-right"}
+                  size={28}
+                  color="#1f9c8b"
+                />
+              )}
+
               theme={{
                 backgroundColor: '#ffffff',
                 calendarBackground: '#ffffff',
