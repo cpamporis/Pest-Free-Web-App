@@ -29,6 +29,7 @@ import ReportScreen from "../Technician/ReportScreen";
 import Statistics from "./Statistics";
 import AdminTechCalendarPreview from "./AdminTechCalendarPreview"; //temporary
 import i18n from "../../services/i18n";
+import AdminHeaderSessionActions from "../../components/AdminHeaderSessionActions";
 
 export default function AdminHomeScreen({
   onLogout,
@@ -373,19 +374,23 @@ const [
           <View style={styles.headerTop}>
             <View style={styles.brandContainer}>
               <Image source={pestfreeLogo} style={styles.logo} resizeMode="contain" />
-              <View style={styles.adminBadge}>
-                <MaterialIcons name="admin-panel-settings" size={14} color="#fff" />
-                <Text style={styles.adminBadgeText}>{i18n.t("admin.home.header.badge")}</Text>
-              </View>
             </View>
-            <TouchableOpacity 
-              style={styles.logoutButtonTop} 
-              onPress={onLogout}
-              activeOpacity={0.7}
-            >
-              <MaterialIcons name="logout" size={18} color="#fff" />
-              <Text style={styles.logoutTextTop}>{i18n.t("admin.home.header.logout")}</Text>
-            </TouchableOpacity>
+
+            <AdminHeaderSessionActions>
+              <TouchableOpacity
+                style={styles.logoutButtonTop}
+                onPress={onLogout}
+                activeOpacity={0.7}
+              >
+                <MaterialIcons name="logout" size={18} color="#fff" />
+                <Text style={styles.logoutTextTop}>{i18n.t("admin.home.header.logout")}</Text>
+              </TouchableOpacity>
+            </AdminHeaderSessionActions>
+          </View>
+
+          <View style={[styles.adminBadge, { alignSelf: "flex-start", marginLeft: 0 }]}>
+            <MaterialIcons name="admin-panel-settings" size={14} color="#fff" />
+            <Text style={styles.adminBadgeText}>{i18n.t("admin.home.header.badge")}</Text>
           </View>
 
           <View style={styles.headerContent}>
@@ -959,11 +964,9 @@ const [
             )}
           </Text>
 
-          <View
-            style={
-              styles.passwordHeaderSpacer
-            }
-          />
+          <AdminHeaderSessionActions>
+            <View style={styles.passwordHeaderSpacer} />
+          </AdminHeaderSessionActions>
         </View>
 
         <View style={styles.passwordContent}>

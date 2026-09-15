@@ -1,9 +1,34 @@
-// apiService.js - Android with FULL iOS functionality
-import AsyncStorage from '@react-native-async-storage/async-storage';
+// apiService.js - Pestify Web production client
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { normalizeAppointment } from "./normalizeAppointment";
 
-export const API_BASE_URL = 
-  "https://field-inspections-backend-production.up.railway.app/api";
+const {
+  isValidAuthenticatedPrincipal
+} = require("../security/authResponsePolicy");
+
+const PRODUCTION_API_ORIGIN =
+  "https://field-inspections-backend-production.up.railway.app";
+
+export const API_BASE_URL = `${PRODUCTION_API_ORIGIN}/api`;
+
+if (
+  API_BASE_URL !== `${PRODUCTION_API_ORIGIN}/api` ||
+  API_BASE_URL.includes("security-lab")
+) {
+  throw new Error("Production API configuration refused");
+}
+
+const MFA_DEVICE_STORAGE_KEY =
+  "pestify.production.mfa-device.v1";
+const LEGACY_AUTH_TOKEN_KEY = "authToken";
+
+function getWebStorage() {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return null;
+  }
+
+  return window.localStorage;
+}
 function normalizeAmaNumbers(value) {
   const sourceValues = Array.isArray(value) ? value : [value];
 
@@ -45,17 +70,21 @@ function normalizeCustomerAma(customer) {
   };
 }
 
+// Access tokens deliberately remain memory-only on Web. This limits token
+// exposure to injected scripts and ensures a page reload requires login.
 let authToken = null;
 
-// Load token from storage when module loads
-(async () => {
+async function purgeLegacyAuthToken() {
+  await AsyncStorage.removeItem(LEGACY_AUTH_TOKEN_KEY);
+  getWebStorage()?.removeItem(LEGACY_AUTH_TOKEN_KEY);
+  getWebStorage()?.removeItem("pestify.production.auth-token.v1");
+}
+
+const authStorageReady = (async () => {
   try {
-    const token = await AsyncStorage.getItem('authToken');
-    if (token) {
-      authToken = token;
-    }
-  } catch (error) {
-    console.error("❌ Failed to load token from storage:", error);
+    await purgeLegacyAuthToken();
+  } catch {
+    console.error("Failed to purge legacy Web authentication storage");
   }
 })();
 
@@ -121,26 +150,115 @@ async function getVisitFrequency(customerId = null) {
 
 // Set auth token and persist it
 async function setAuthToken(token) {
-  authToken = token;
-  try {
-    if (token) {
-      await AsyncStorage.setItem('authToken', token);
-    } else {
-      await AsyncStorage.removeItem('authToken');
-    }
-  } catch (error) {
-    console.error("❌ Failed to save token to storage:", error);
-  }
+  await authStorageReady;
+  authToken = token ? String(token) : null;
 }
 
 // Clear auth token (for logout)
 async function clearAuthToken() {
+  await authStorageReady;
   authToken = null;
+
   try {
-    await AsyncStorage.removeItem('authToken');
-  } catch (error) {
-    console.error("❌ Failed to clear token:", error);
+    await purgeLegacyAuthToken();
+  } catch {
+    console.error("Failed to clear legacy Web authentication storage");
   }
+}
+
+function normalizeMfaDeviceAccount(value) {
+  const account = String(value || "").trim().toLowerCase();
+
+  return account.length <= 320 && /^[^\s@]+@[^\s@]+$/.test(account)
+    ? account
+    : null;
+}
+
+function validStoredMfaCredential(credential) {
+  const expiresAt = Date.parse(credential?.expiresAt);
+
+  return (
+    typeof credential?.token === "string" &&
+    /^[A-Za-z0-9_-]{43}$/.test(credential.token) &&
+    Number.isFinite(expiresAt) &&
+    expiresAt > Date.now()
+  );
+}
+
+async function getMfaDeviceToken(accountValue) {
+  const account = normalizeMfaDeviceAccount(accountValue);
+
+  if (!account) {
+    return null;
+  }
+
+  try {
+    const stored = getWebStorage()?.getItem(MFA_DEVICE_STORAGE_KEY);
+    const collection = stored ? JSON.parse(stored) : null;
+    const credential = collection?.accounts?.[account];
+
+    return collection?.version === 1 &&
+      validStoredMfaCredential(credential)
+      ? credential.token
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+async function storeMfaDeviceCredential(result, accountValue) {
+  if (!result?.mfaDeviceToken) {
+    return;
+  }
+
+  const storage = getWebStorage();
+  const account = normalizeMfaDeviceAccount(accountValue);
+  const expiresAt = Date.parse(result.mfaDeviceExpiresAt);
+
+  if (
+    !storage ||
+    !account ||
+    !/^[A-Za-z0-9_-]{43}$/.test(result.mfaDeviceToken) ||
+    !Number.isFinite(expiresAt) ||
+    expiresAt <= Date.now()
+  ) {
+    throw new Error("Invalid trusted-device credential");
+  }
+
+  let accounts = {};
+
+  try {
+    const stored = storage.getItem(MFA_DEVICE_STORAGE_KEY);
+    const parsed = stored ? JSON.parse(stored) : null;
+
+    if (
+      parsed?.version === 1 &&
+      parsed.accounts &&
+      typeof parsed.accounts === "object"
+    ) {
+      accounts = Object.fromEntries(
+        Object.entries(parsed.accounts)
+          .filter(([storedAccount, credential]) =>
+            normalizeMfaDeviceAccount(storedAccount) &&
+            validStoredMfaCredential(credential)
+          )
+          .slice(-7)
+      );
+    }
+  } catch {
+    accounts = {};
+  }
+
+  accounts[account] = {
+    token: result.mfaDeviceToken,
+    expiresAt: new Date(expiresAt).toISOString(),
+    storedAt: new Date().toISOString()
+  };
+
+  storage.setItem(
+    MFA_DEVICE_STORAGE_KEY,
+    JSON.stringify({ version: 1, accounts })
+  );
 }
 
 // Get current token (useful for debugging)
@@ -166,8 +284,75 @@ async function verifyTokenWithBackend(token) {
   }
 }
 
+function validAdministratorSession(result) {
+  const accessExpiresAt = Date.parse(
+    result?.session?.accessTokenExpiresAt
+  );
+  const absoluteExpiresAt = Date.parse(
+    result?.session?.absoluteExpiresAt
+  );
+
+  return (
+    typeof result?.session?.id === "string" &&
+    Number.isFinite(accessExpiresAt) &&
+    Number.isFinite(absoluteExpiresAt) &&
+    accessExpiresAt > Date.now() &&
+    absoluteExpiresAt > Date.now() &&
+    accessExpiresAt <= absoluteExpiresAt
+  );
+}
+
+async function acceptAuthenticationResult(
+  result,
+  { mfaDeviceAccount = null } = {}
+) {
+  if (!result?.success) {
+    return result;
+  }
+
+  if (!isValidAuthenticatedPrincipal(result)) {
+    await clearAuthToken();
+    return {
+      success: false,
+      error: "Invalid authenticated principal response"
+    };
+  }
+
+  if (result.role === "admin" && !validAdministratorSession(result)) {
+    await clearAuthToken();
+    return {
+      success: false,
+      error: "Invalid administrator session response"
+    };
+  }
+
+  if (result.mfaDeviceToken && result.role !== "admin") {
+    await clearAuthToken();
+    return {
+      success: false,
+      error: "Invalid trusted-device authentication response"
+    };
+  }
+
+  await setAuthToken(result.token);
+
+  let mfaDeviceStored = true;
+
+  if (result.mfaDeviceToken) {
+    try {
+      await storeMfaDeviceCredential(result, mfaDeviceAccount);
+    } catch {
+      mfaDeviceStored = false;
+    }
+  }
+
+  return { ...result, mfaDeviceStored };
+}
+
 // Generic request wrapper
 async function request(method, endpoint, body = null) {
+  await authStorageReady;
+
   const options = {
     method,
     headers: {
@@ -400,64 +585,126 @@ const apiService = {
 
   // LOGIN
   async login(email, password) {
-    const result = await request("POST", "/login", { email, password });
+    await clearAuthToken();
+
+    const mfaDeviceAccount = normalizeMfaDeviceAccount(email);
+    const mfaDeviceToken = await getMfaDeviceToken(mfaDeviceAccount);
+    const result = await request("POST", "/login", {
+      email,
+      password,
+      ...(mfaDeviceToken ? { mfaDeviceToken } : {})
+    });
 
     if (!result || !result.success) {
       return result;
     }
 
-    // Set the token immediately upon successful login
+    if (result.role === "super_admin") {
+      await clearAuthToken();
+      return {
+        success: false,
+        error: "Super admin access is available only in Pestify iOS."
+      };
+    }
+
+    if (result.token && result.challengeToken) {
+      await clearAuthToken();
+      return {
+        success: false,
+        error: "Invalid mixed authentication response"
+      };
+    }
+
     if (result.token) {
-      await setAuthToken(result.token);
-      
-      // Verify token was set
-      const currentToken = getCurrentToken();
-      
-      // Test the token immediately
-      if (currentToken) {
-        const verification = await verifyTokenWithBackend(currentToken);
-        
-        if (!verification.success) {
-          console.error("❌ Token is invalid! Clearing...");
-          await clearAuthToken();
-          return {
+      return acceptAuthenticationResult(result, {
+        mfaDeviceAccount
+      });
+    }
+
+    if (
+      result.role === "admin" &&
+      typeof result.challengeToken === "string" &&
+      result.challengeToken.length >= 40 &&
+      result.challengeToken.length <= 128 &&
+      [
+        "enrollment_offer",
+        "enrollment_challenge",
+        "login_challenge"
+      ].includes(result.mfaAction)
+    ) {
+      return result;
+    }
+
+    return {
+      success: false,
+      error: "Incomplete authentication response"
+    };
+  },
+
+  async startMfaEnrollment(challengeToken) {
+    return request("POST", "/auth/mfa/enrollment/start", {
+      challengeToken
+    });
+  },
+
+  async confirmMfaEnrollment(challengeToken, code, mfaDeviceAccount) {
+    const result = await request(
+      "POST",
+      "/auth/mfa/enrollment/confirm",
+      { challengeToken, code }
+    );
+
+    return result?.token
+      ? acceptAuthenticationResult(result, { mfaDeviceAccount })
+      : result;
+  },
+
+  async declineMfaEnrollment(challengeToken) {
+    const result = await request(
+      "POST",
+      "/auth/mfa/enrollment/decline",
+      { challengeToken }
+    );
+
+    return result?.token
+      ? acceptAuthenticationResult(result)
+      : result;
+  },
+
+  async verifyMfaLogin(challengeToken, code, mfaDeviceAccount) {
+    const result = await request("POST", "/auth/mfa/verify", {
+      challengeToken,
+      code
+    });
+
+    return result?.token
+      ? acceptAuthenticationResult(result, { mfaDeviceAccount })
+      : result;
+  },
+
+  async refreshAdminSession() {
+    const result = await request("POST", "/auth/session/refresh");
+
+    if (!result?.token || !validAdministratorSession(result)) {
+      return result?.success
+        ? {
             success: false,
-            error: "Token validation failed. Please try again."
-          };
-        }
-      }
+            error: "Invalid administrator session response",
+            invalidSessionResponse: true
+          }
+        : result;
     }
 
-    if (result.role === "admin") {
-      return {
-        success: true,
-        role: "admin",
-        token: result.token,
-        mustChangePassword:
-          result.mustChangePassword === true ||
-          result.must_change_password === true
-      };
+    await setAuthToken(result.token);
+    return result;
+  },
+
+  async logoutAdminSession() {
+    if (!authToken) {
+      return { success: true };
     }
 
-    if (result.role === "tech" && result.technician) {
-      return {
-        success: true,
-        role: "tech",
-        token: result.token,
-        technician: result.technician
-      };
-    }
-
-    if (result.role === "customer" && result.customer) {
-      return {
-        success: true,
-        role: "customer",
-        token: result.token,
-        customer: result.customer
-      };
-    }
-
-    return { success: false, error: "Invalid credentials" };
+    return request("POST", "/auth/session/logout");
   },
 
   async getCustomerStats() {

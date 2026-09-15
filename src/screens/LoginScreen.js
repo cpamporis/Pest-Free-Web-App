@@ -9,6 +9,7 @@ import {
   Image,
   Alert,
   Platform,
+  ActivityIndicator,
 } from "react-native";
 import { StyleSheet } from "react-native";
 
@@ -16,6 +17,11 @@ import apiService from "../services/apiService";
 import i18n from "../services/i18n";
 import pestfreeLogo from "../../assets/pestfree_logo.png";
 import loginBackground from "../../assets/background.jpg";
+import MFAScreen from "./MFAScreen";
+
+const { normalizeMfaFlow } = require(
+  "../security/adminMfaUiPolicy"
+);
 
 export default function LoginScreen({
   onTechnicianLogin,
@@ -28,6 +34,8 @@ export default function LoginScreen({
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
   const [currentLanguage, setCurrentLanguage] = useState(i18n.getLocale()); // Use getter
+  const [mfaFlow, setMfaFlow] = useState(null);
+  const [loginBusy, setLoginBusy] = useState(false);
 
   const changeLanguage = (lang) => {
     i18n.setLocale(lang);
@@ -68,44 +76,117 @@ export default function LoginScreen({
     }
   };
 
+  const completeAdministratorLogin = async result => {
+    try {
+      await onAdminLogin(
+        result.role,
+        result.mustChangePassword === true,
+        result.session
+      );
+      setMfaFlow(null);
+      setPassword("");
+    } catch {
+      await apiService.clearAuthToken();
+      showAlert(
+        "Η σύνδεση απέτυχε",
+        "Ο διακομιστής επέστρεψε μη έγκυρο admin session."
+      );
+    }
+  };
+
   const tryLogin = async () => {
     if (!email || !password) {
       showAlert(i18n.t("login.error.title"), i18n.t("login.error.enterEmailAndPassword"));
       return;
     }
 
-    const result = await apiService.login(email, password);
+    if (loginBusy) {
+      return;
+    }
+
+    setLoginBusy(true);
+
+    let result;
+
+    try {
+      result = await apiService.login(
+        email.trim().toLowerCase(),
+        password
+      );
+    } catch {
+      result = {
+        success: false,
+        error: "Δεν ήταν δυνατή η σύνδεση με τον διακομιστή."
+      };
+    } finally {
+      setLoginBusy(false);
+    }
 
     if (!result || !result.success) {
-      showAlert(i18n.t("login.error.loginFailed"));
+      showAlert(
+        i18n.t("login.error.loginFailed"),
+        result?.error || ""
+      );
       setPassword("");
       return;
     }
 
     if (result.role === "admin") {
-      await apiService.setAuthToken(result.token);
+      if (
+        typeof result.challengeToken === "string" &&
+        typeof result.mfaAction === "string"
+      ) {
+        setPassword("");
+        try {
+          setMfaFlow(
+            normalizeMfaFlow(
+              result,
+              email.trim().toLowerCase()
+            )
+          );
+        } catch {
+          showAlert(
+            "Η σύνδεση απέτυχε",
+            "Ο διακομιστής επέστρεψε μη έγκυρο MFA challenge."
+          );
+        }
+        return;
+      }
 
-      onAdminLogin(
-        result.mustChangePassword === true
-      );
+      await completeAdministratorLogin(result);
 
       return;
     }
 
     if (result.role === "tech") {
-      await apiService.setAuthToken(result.token);
       onTechnicianLogin(result.technician);
+      setPassword("");
       return;
     }
     if (result.role === "customer") {
-      await apiService.setAuthToken(result.token);
       onCustomerLogin(result.customer);
+      setPassword("");
       return;
     }
 
+    await apiService.clearAuthToken();
     showAlert(i18n.t("login.error.loginFailed"));
     setPassword("");
   };
+
+  if (mfaFlow) {
+    return (
+      <MFAScreen
+        flow={mfaFlow}
+        onAuthenticated={completeAdministratorLogin}
+        onCancel={async () => {
+          await apiService.clearAuthToken();
+          setMfaFlow(null);
+          setPassword("");
+        }}
+      />
+    );
+  }
 
   return (
     <View style={styles.loginContainer}>
@@ -163,8 +244,21 @@ export default function LoginScreen({
           onChangeText={setPassword}
         />
 
-        <TouchableOpacity style={styles.loginButton} onPress={tryLogin}>
-          <Text style={styles.loginButtonText}>{i18n.t("login.loginButton")}</Text>
+        <TouchableOpacity
+          disabled={loginBusy}
+          style={[
+            styles.loginButton,
+            loginBusy && { opacity: 0.65 }
+          ]}
+          onPress={tryLogin}
+        >
+          {loginBusy ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.loginButtonText}>
+              {i18n.t("login.loginButton")}
+            </Text>
+          )}
         </TouchableOpacity>
         
         <TouchableOpacity

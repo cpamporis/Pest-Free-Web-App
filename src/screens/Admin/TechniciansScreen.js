@@ -18,6 +18,7 @@ import { MaterialIcons, FontAwesome5, Ionicons } from '@expo/vector-icons';
 import apiService from "../../services/apiService";
 import pestfreeLogo from "../../../assets/pestfree_logo.png";
 import i18n from "../../services/i18n";
+import AdminHeaderSessionActions from "../../components/AdminHeaderSessionActions";
 
 function showAlert(title, message, buttons = []) {
   const safeTitle = title == null ? "" : String(title);
@@ -440,18 +441,22 @@ export default function TechniciansScreen({ onClose }) {
           <View style={styles.headerTop}>
             <View style={styles.brandContainer}>
               <Image source={pestfreeLogo} style={styles.logo} resizeMode="contain" />
-              <View style={styles.adminBadge}>
-                <MaterialIcons name="engineering" size={14} color="#fff" />
-                <Text style={styles.adminBadgeText}>{i18n.t("admin.technicians.header.badge")}</Text>
-              </View>
             </View>
-            <TouchableOpacity 
-              style={styles.closeButton} 
-              onPress={onClose}
-              activeOpacity={0.7}
-            >
-              <MaterialIcons name="close" size={22} color="#fff" />
-            </TouchableOpacity>
+
+            <AdminHeaderSessionActions>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={onClose}
+                activeOpacity={0.7}
+              >
+                <MaterialIcons name="close" size={22} color="#fff" />
+              </TouchableOpacity>
+            </AdminHeaderSessionActions>
+          </View>
+
+          <View style={[styles.adminBadge, { alignSelf: "flex-start", marginLeft: 0 }]}>
+            <MaterialIcons name="engineering" size={14} color="#fff" />
+            <Text style={styles.adminBadgeText}>{i18n.t("admin.technicians.header.badge")}</Text>
           </View>
 
           <View style={styles.headerContent}>

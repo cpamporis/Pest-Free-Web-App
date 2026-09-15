@@ -14,8 +14,9 @@ import { MaterialIcons, FontAwesome5 } from "@expo/vector-icons";
 import apiService from "../../services/apiService";
 import i18n from "../../services/i18n";
 import { useWindowDimensions } from "react-native";
+import AdminHeaderSessionActions from "../../components/AdminHeaderSessionActions";
 
-export default function AdminTechCalendarPreview() {
+export default function AdminTechCalendarPreview({ onClose }) {
   const { width: screenWidth } = useWindowDimensions();
   const TIME_COLUMN_WIDTH = 70;
   const DAY_COLUMN_WIDTH = (screenWidth - TIME_COLUMN_WIDTH) / 7;
@@ -611,6 +612,17 @@ const getSpecialServiceLabel = (subtype) => {
                         <Text style={styles.badgeText}>{i18n.t("admin.calendar.header.badge")}</Text>
                     </View>
                 </View>
+                {onClose ? (
+                  <AdminHeaderSessionActions>
+                    <TouchableOpacity
+                      style={styles.closeButton}
+                      onPress={onClose}
+                      activeOpacity={0.7}
+                    >
+                      <MaterialIcons name="close" size={22} color="#fff" />
+                    </TouchableOpacity>
+                  </AdminHeaderSessionActions>
+                ) : null}
             </View>
 
             <View style={styles.headerContent}>
