@@ -140,19 +140,20 @@ export default function CustomerProfile({ customer, onClose}) {
 
   const loadVisitsAndTrends = async (custId) => {
   try {
-    // Load customer appointments
-    const appointmentsRes = await apiService.request(
-      "GET", 
-      `/appointments/customer/${custId}`
-    );
+    // Load completed visits/service logs only. The appointments endpoint also
+    // contains future appointments whose IDs are not valid report IDs.
+    const visitHistory = await apiService.getCustomerActualVisits(custId);
 
     let customerVisits = [];
     
-    if (appointmentsRes?.success && Array.isArray(appointmentsRes.visits)) {
+    if (Array.isArray(visitHistory)) {
 
-      for (const appointment of appointmentsRes.visits) {
+      for (const visitSummary of visitHistory) {
         try {
-          const visitId = appointment.visitId || appointment.id;
+          const visitId =
+            visitSummary.visitId ||
+            visitSummary.visit_id ||
+            visitSummary.id;
           
           if (visitId) {
             const reportRes = await apiService.request(
@@ -163,12 +164,32 @@ export default function CustomerProfile({ customer, onClose}) {
             if (reportRes?.success && reportRes.report) {
               customerVisits.push({
                 visitId: reportRes.report.visitId || visitId,
-                appointmentId: appointment.id || visitId,
-                serviceType: reportRes.report.serviceType || appointment.service_type || 'myocide',
-                startTime: reportRes.report.start_time || reportRes.report.service_start_time || appointment.appointment_date,
-                appointmentDate: reportRes.report.date || appointment.appointment_date,
-                technicianName: reportRes.report.technician_name || reportRes.report.technicianName || "N/A",
-                status: appointment.status || 'completed',
+                appointmentId:
+                  reportRes.report.appointmentId ||
+                  visitSummary.appointmentId ||
+                  null,
+                serviceType:
+                  reportRes.report.serviceType ||
+                  visitSummary.serviceType ||
+                  visitSummary.service_type ||
+                  'myocide',
+                startTime:
+                  reportRes.report.start_time ||
+                  reportRes.report.service_start_time ||
+                  visitSummary.startTime ||
+                  visitSummary.start_time ||
+                  visitSummary.createdAt,
+                appointmentDate:
+                  reportRes.report.date ||
+                  visitSummary.startTime ||
+                  visitSummary.start_time ||
+                  visitSummary.createdAt,
+                technicianName:
+                  reportRes.report.technician_name ||
+                  reportRes.report.technicianName ||
+                  visitSummary.technicianName ||
+                  "N/A",
+                status: 'completed',
                 duration: reportRes.report.duration,
                 source: 'report',
                 stations: reportRes.report.stations || [],
@@ -177,7 +198,10 @@ export default function CustomerProfile({ customer, onClose}) {
             }
           }
         } catch (visitErr) {
-          console.warn(`⚠️ Error processing appointment ${appointment.id}:`, visitErr.message);
+          console.warn(
+            `⚠️ Error processing visit ${visitSummary.visitId || visitSummary.id || "unknown"}:`,
+            visitErr.message
+          );
         }
       }
     }

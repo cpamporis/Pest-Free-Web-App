@@ -130,3 +130,63 @@ test("customer map uploads use the active in-memory administrator token", () => 
     /formData\.append\("customerId", createdCustomer\.customerId\)/
   );
 });
+
+test("all technician services use the shared Web-safe image adapter", () => {
+  const helper = read("src/utils/appendServiceImages.js");
+
+  assert.match(helper, /Platform\.OS === "web"/);
+  assert.match(helper, /const blob = await response\.blob\(\)/);
+  assert.match(
+    helper,
+    /formData\.append\(\s*fieldName,\s*blob,\s*imageName/
+  );
+  assert.match(helper, /"image\/heic": "heic"/);
+
+  for (const [relativePath, expectedCalls] of [
+    ["src/screens/Technician/MyocideScreen.js", 2],
+    ["src/screens/Technician/CertificationServiceScreen.js", 2],
+    ["src/screens/Technician/DisinfectionScreen.js", 2],
+    ["src/screens/Technician/InsecticideScreen.js", 2],
+    ["src/screens/Technician/SpecialServicesScreen.js", 2]
+  ]) {
+    const source = read(relativePath);
+
+    assert.match(source, /import \{ appendServiceImages \}/);
+    assert.equal(
+      (source.match(/await appendServiceImages\(formData, reportImages/g) || [])
+        .length,
+      expectedCalls,
+      `${relativePath} must route every create/update upload through the adapter`
+    );
+    assert.doesNotMatch(
+      source,
+      /formData\.append\("images",\s*\{\s*uri/,
+      `${relativePath} still contains a browser-incompatible image append`
+    );
+  }
+});
+
+test("Certification uses the gallery directly on Web", () => {
+  const source = read(
+    "src/screens/Technician/CertificationServiceScreen.js"
+  );
+  const chooserStart = source.indexOf("const openImageChooser");
+  const chooserEnd = source.indexOf("// New useEffect", chooserStart);
+  const chooser = source.slice(chooserStart, chooserEnd);
+
+  assert.match(
+    chooser,
+    /Platform\.OS === "web"[\s\S]*pickImagesFromGallery\(\)[\s\S]*return/
+  );
+});
+
+test("CustomerProfile requests reports only from actual visit history", () => {
+  const source = read("src/screens/Admin/CustomerProfile.js");
+
+  assert.match(source, /apiService\.getCustomerActualVisits\(custId\)/);
+  assert.doesNotMatch(
+    source,
+    /`\/appointments\/customer\/\$\{custId\}`/
+  );
+  assert.match(source, /visitSummary\.visitId[\s\S]*visitSummary\.id/);
+});
