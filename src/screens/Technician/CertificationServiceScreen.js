@@ -34,6 +34,7 @@ import PheromoneTrapForm from "../../components/PheromoneTrapForm";
 import i18n from "../../services/i18n";
 import ChemicalsDropdown from "../../components/ChemicalsDropdown";
 import { MaterialIcons } from "@expo/vector-icons";
+import { appendServiceImages } from "../../utils/appendServiceImages";
 
 // Real code after imports
 const { width: deviceWidth } = Dimensions.get("window");
@@ -674,33 +675,6 @@ useEffect(() => {
     setHasGeneratedReport(true);
   };
 
-  const appendImagesToFormData = (formData, images) => {
-    if (!Array.isArray(images)) return;
-
-    images.forEach((img, index) => {
-      if (!img?.uri) return;
-
-      const uri =
-        Platform.OS === "ios"
-          ? img.uri.replace("file://", "")
-          : img.uri;
-
-      const name =
-        img.fileName ||
-        img.name ||
-        `photo_${Date.now()}_${index}.jpg`;
-
-      const type = img.type || "image/jpeg";
-
-      formData.append("images", {
-        uri,
-        name,
-        type,
-      });
-    });
-  };
-
-
 // In CertificationServiceScreen.js - Update the handleSaveAll function
 
 const handleSaveAll = async () => {
@@ -814,8 +788,6 @@ const handleSaveAll = async () => {
 
     // Add new images - limit to prevent timeout
     const MAX_IMAGES = 5;
-    const imagesToUpload = reportImages.slice(0, MAX_IMAGES);
-    
     if (reportImages.length > MAX_IMAGES) {
       showAlert(
         i18n.t("technician.common.warning"),
@@ -823,18 +795,8 @@ const handleSaveAll = async () => {
       );
     }
 
-    imagesToUpload.forEach((img, index) => {
-      if (!img?.uri) return;
-      
-      const uri = Platform.OS === "ios" ? img.uri.replace("file://", "") : img.uri;
-      const name = img.fileName || img.name || `photo_${Date.now()}_${index}.jpg`;
-      const type = img.type || "image/jpeg";
-      
-      formData.append("images", {
-        uri,
-        name,
-        type,
-      });
+    await appendServiceImages(formData, reportImages, {
+      maxImages: MAX_IMAGES
     });
 
     // Add existing images as JSON string
@@ -1036,6 +998,11 @@ const handleSaveAll = async () => {
         i18n.t("technician.myocide.alerts.startServiceFirst"),
         i18n.t("technician.myocide.alerts.startServiceRequired")
       );
+      return;
+    }
+
+    if (Platform.OS === "web") {
+      pickImagesFromGallery();
       return;
     }
 
@@ -1603,19 +1570,7 @@ const handleSaveAll = async () => {
       formData.append("treated_areas", JSON.stringify(treatedAreas));
 
       // Add new images
-      reportImages.forEach((img, index) => {
-        if (!img?.uri) return;
-        
-        const uri = Platform.OS === "ios" ? img.uri.replace("file://", "") : img.uri;
-        const name = img.fileName || img.name || `photo_${Date.now()}_${index}.jpg`;
-        const type = img.type || "image/jpeg";
-        
-        formData.append("images", {
-          uri,
-          name,
-          type,
-        });
-      });
+      await appendServiceImages(formData, reportImages);
 
       // Add existing images as JSON string
       formData.append("existingImages", JSON.stringify(existingImages));

@@ -23,6 +23,7 @@ import { MaterialIcons, FontAwesome5, Ionicons } from '@expo/vector-icons';
 import { launchImageLibrary, launchCamera } from "react-native-image-picker";
 import { Image } from "react-native";
 import i18n from "../../services/i18n";
+import { appendServiceImages } from "../../utils/appendServiceImages";
 
 export default function SpecialServicesScreen({ 
   technician, 
@@ -829,34 +830,7 @@ export default function SpecialServicesScreen({
       });
 
       // append images
-      for (let i = 0; i < reportImages.length; i++) {
-      const img = reportImages[i];
-      if (!img?.uri) continue;
-
-      const name =
-        img.fileName ||
-        img.name ||
-        `photo_${Date.now()}_${i}.jpg`;
-
-      const type = img.type || "image/jpeg";
-
-      if (Platform.OS === "web") {
-        const response = await fetch(img.uri);
-        const blob = await response.blob();
-        formData.append("images", blob, name);
-      } else {
-        const uri =
-          Platform.OS === "ios"
-            ? img.uri.replace("file://", "")
-            : img.uri;
-
-        formData.append("images", {
-          uri,
-          name,
-          type,
-        });
-      }
-    }
+      await appendServiceImages(formData, reportImages);
       
       if (existingImages.length > 0) {
         formData.append("existingImages", JSON.stringify(existingImages));
@@ -1003,34 +977,7 @@ export default function SpecialServicesScreen({
       });
 
       // append images
-      for (let i = 0; i < reportImages.length; i++) {
-      const img = reportImages[i];
-      if (!img?.uri) continue;
-
-      const name =
-        img.fileName ||
-        img.name ||
-        `photo_${Date.now()}_${i}.jpg`;
-
-      const type = img.type || "image/jpeg";
-
-      if (Platform.OS === "web") {
-        const response = await fetch(img.uri);
-        const blob = await response.blob();
-        formData.append("images", blob, name);
-      } else {
-        const uri =
-          Platform.OS === "ios"
-            ? img.uri.replace("file://", "")
-            : img.uri;
-
-        formData.append("images", {
-          uri,
-          name,
-          type,
-        });
-      }
-    }
+      await appendServiceImages(formData, reportImages);
       
       if (existingImages.length > 0) {
         formData.append("existingImages", JSON.stringify(existingImages));

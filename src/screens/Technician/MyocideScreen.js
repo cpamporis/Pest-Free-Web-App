@@ -27,6 +27,7 @@ import { launchImageLibrary, launchCamera } from "react-native-image-picker";
 import { SafeAreaView } from "react-native-safe-area-context";
 import PheromoneTrapForm from "../../components/PheromoneTrapForm";
 import i18n from "../../services/i18n";
+import { appendServiceImages } from "../../utils/appendServiceImages";
 
 // Real code after imports
 const { width: deviceWidth } = Dimensions.get("window");
@@ -596,33 +597,6 @@ useEffect(() => {
     setHasGeneratedReport(true);
   };
 
-  const appendImagesToFormData = (formData, images) => {
-    if (!Array.isArray(images)) return;
-
-    images.forEach((img, index) => {
-      if (!img?.uri) return;
-
-      const uri =
-        Platform.OS === "ios"
-          ? img.uri.replace("file://", "")
-          : img.uri;
-
-      const name =
-        img.fileName ||
-        img.name ||
-        `photo_${Date.now()}_${index}.jpg`;
-
-      const type = img.type || "image/jpeg";
-
-      formData.append("images", {
-        uri,
-        name,
-        type,
-      });
-    });
-  };
-
-
 // In MyocideScreen.js - Update the handleSaveAll function
 
 const handleSaveAll = async () => {
@@ -714,8 +688,6 @@ const handleSaveAll = async () => {
 
     // Add new images - limit to prevent timeout
     const MAX_IMAGES = 5;
-    const imagesToUpload = reportImages.slice(0, MAX_IMAGES);
-    
     if (reportImages.length > MAX_IMAGES) {
       showAlert(
         i18n.t("technician.common.warning"),
@@ -723,18 +695,8 @@ const handleSaveAll = async () => {
       );
     }
 
-    imagesToUpload.forEach((img, index) => {
-      if (!img?.uri) return;
-      
-      const uri = Platform.OS === "ios" ? img.uri.replace("file://", "") : img.uri;
-      const name = img.fileName || img.name || `photo_${Date.now()}_${index}.jpg`;
-      const type = img.type || "image/jpeg";
-      
-      formData.append("images", {
-        uri,
-        name,
-        type,
-      });
+    await appendServiceImages(formData, reportImages, {
+      maxImages: MAX_IMAGES
     });
 
     // Add existing images as JSON string
@@ -1476,36 +1438,7 @@ const handleSaveAll = async () => {
       );
 
       // Add ONLY NEW images (the ones just taken/selected)
-      for (let i = 0; i < reportImages.length; i++) {
-        const img = reportImages[i];
-        if (!img?.uri) continue;
-
-        const name =
-          img.fileName ||
-          img.name ||
-          `photo_${Date.now()}_${i}.jpg`;
-
-        const type = img.type || "image/jpeg";
-
-        if (Platform.OS === "web") {
-          // 🔥 CRITICAL: Convert to Blob for web
-          const response = await fetch(img.uri);
-          const blob = await response.blob();
-
-          formData.append("images", blob, name);
-        } else {
-          const uri =
-            Platform.OS === "ios"
-              ? img.uri.replace("file://", "")
-              : img.uri;
-
-          formData.append("images", {
-            uri,
-            name,
-            type,
-          });
-        }
-      }
+      await appendServiceImages(formData, reportImages);
 
       // Add existing images as JSON string (these are the ones already saved)
       // This will keep all existing images unless they were deleted
