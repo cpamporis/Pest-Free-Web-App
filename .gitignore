@@ -38,3 +38,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Lab source branch: build output must be generated for the verified Lab origin.
+/dist/

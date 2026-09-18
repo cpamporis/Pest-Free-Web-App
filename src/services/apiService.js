@@ -1,4 +1,4 @@
-// apiService.js - Pestify Web production client
+// apiService.js - Pestify Web Security Lab client
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { normalizeAppointment } from "./normalizeAppointment";
 
@@ -6,20 +6,20 @@ const {
   isValidAuthenticatedPrincipal
 } = require("../security/authResponsePolicy");
 
-const PRODUCTION_API_ORIGIN =
-  "https://field-inspections-backend-production.up.railway.app";
+const SECURITY_LAB_API_ORIGIN =
+  "https://security-lab-security-lab.up.railway.app";
 
-export const API_BASE_URL = `${PRODUCTION_API_ORIGIN}/api`;
+export const API_BASE_URL = `${SECURITY_LAB_API_ORIGIN}/api`;
 
 if (
-  API_BASE_URL !== `${PRODUCTION_API_ORIGIN}/api` ||
-  API_BASE_URL.includes("security-lab")
+  API_BASE_URL !== `${SECURITY_LAB_API_ORIGIN}/api` ||
+  API_BASE_URL.includes("production")
 ) {
-  throw new Error("Production API configuration refused");
+  throw new Error("Security Lab API configuration refused");
 }
 
 const MFA_DEVICE_STORAGE_KEY =
-  "pestify.production.mfa-device.v1";
+  "pestify.security-lab.mfa-device.v1";
 const LEGACY_AUTH_TOKEN_KEY = "authToken";
 
 function getWebStorage() {
@@ -77,7 +77,7 @@ let authToken = null;
 async function purgeLegacyAuthToken() {
   await AsyncStorage.removeItem(LEGACY_AUTH_TOKEN_KEY);
   getWebStorage()?.removeItem(LEGACY_AUTH_TOKEN_KEY);
-  getWebStorage()?.removeItem("pestify.production.auth-token.v1");
+  getWebStorage()?.removeItem("pestify.security-lab.auth-token.v1");
 }
 
 const authStorageReady = (async () => {

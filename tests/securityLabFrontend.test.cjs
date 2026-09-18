@@ -17,7 +17,7 @@ function javascriptFiles(directory) {
   });
 }
 
-test("Web authentication is production-only and keeps access tokens in memory", () => {
+test("Web authentication is Lab-only and keeps access tokens in memory", () => {
   const source = read("src/services/apiService.js");
   const setStart = source.indexOf("async function setAuthToken");
   const clearStart = source.indexOf("async function clearAuthToken");
@@ -25,13 +25,13 @@ test("Web authentication is production-only and keeps access tokens in memory", 
 
   assert.match(
     source,
-    /https:\/\/field-inspections-backend-production\.up\.railway\.app/
+    /https:\/\/security-lab-security-lab\.up\.railway\.app/
   );
   assert.ok(setStart >= 0 && clearStart > setStart);
   assert.match(setSource, /authToken = token \? String\(token\) : null/);
   assert.doesNotMatch(setSource, /localStorage|AsyncStorage|setItem/);
   assert.doesNotMatch(source, /expo-secure-store|SecureStore/);
-  assert.match(source, /pestify\.production\.mfa-device\.v1/);
+  assert.match(source, /pestify\.security-lab\.mfa-device\.v1/);
 });
 test("Web exposes the complete regular-admin MFA/session API", () => {
   const source = read("src/services/apiService.js");
@@ -92,21 +92,21 @@ test("all Web admin headers expose the manual session timer", () => {
   }
 });
 
-test("legacy persistent access tokens are purged and Security Lab is unreachable", () => {
+test("legacy persistent access tokens are purged and Production is unreachable", () => {
   const apiSource = read("src/services/apiService.js");
 
   assert.match(apiSource, /LEGACY_AUTH_TOKEN_KEY = "authToken"/);
   assert.match(apiSource, /AsyncStorage\.removeItem\(LEGACY_AUTH_TOKEN_KEY\)/);
   assert.match(
     apiSource,
-    /removeItem\("pestify\.production\.auth-token\.v1"\)/
+    /removeItem\("pestify\.security-lab\.auth-token\.v1"\)/
   );
   assert.doesNotMatch(apiSource, /AsyncStorage\.setItem/);
 
   const violations = javascriptFiles(path.join(root, "src"))
     .filter(file =>
       fs.readFileSync(file, "utf8").includes(
-        "security-lab-security-lab.up.railway.app"
+        "field-inspections-backend-production.up.railway.app"
       )
     )
     .map(file => path.relative(root, file));
