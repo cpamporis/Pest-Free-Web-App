@@ -19,6 +19,7 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import Animated from "react-native-reanimated";
 import { formatTime } from "../../utils/timeUtils";
 import apiService, { API_BASE_URL } from "../../services/apiService";
+import ProtectedImage, { ProtectedHtmlImage } from "../../components/ProtectedImage";
 import BaitStationForm from "../../components/BaitStationForm";
 import { Dimensions } from "react-native";
 import AtoxicStationForm from "../../components/AtoxicStationForm";
@@ -1566,30 +1567,6 @@ const handleSaveAll = async () => {
               <Text>customerMaps length: {customerMaps.length}</Text>
               <Text>Customer: {customer?.customerName || 'none'}</Text>
               
-              <View style={{marginTop: 20, padding: 10, backgroundColor: '#e8f4f3', borderRadius: 5}}>
-                <Text style={{fontWeight: 'bold'}}>Image Test:</Text>
-                {selectedMap?.image && (
-                  <>
-                    <Text>URL: {currentImageUri}</Text>
-                    <TouchableOpacity 
-                      style={{backgroundColor: '#1f9c8d', padding: 10, borderRadius: 5, marginTop: 10}}
-                      onPress={() => {
-                        fetch(currentImageUri)
-                          .then(res => {
-                            showAlert("Image Test", `Status: ${res.status} ${res.statusText}`);
-                          })
-                          .catch(err => {
-                            console.error("Image fetch error:", err);
-                            showAlert("Image Test Error", err.message);
-                          });
-                      }}
-                    >
-                      <Text style={{color: 'white', textAlign: 'center'}}>Test Image URL</Text>
-                    </TouchableOpacity>
-                  </>
-                )}
-              </View>
-              
               <View style={{marginTop: 20}}>
                 <Text style={{fontWeight: 'bold'}}>Raw Data:</Text>
                 <Text style={{fontSize: 10, color: '#666'}}>
@@ -1606,7 +1583,7 @@ const handleSaveAll = async () => {
             {selectedMap?.image && (
               <View style={{marginTop: 20, width: '100%'}}>
                 <Text style={{fontWeight: 'bold', marginBottom: 10}}>Image Preview:</Text>
-                <Image
+                <ProtectedImage
                   source={{ uri: currentImageUri }}
                   style={{width: 200, height: 200, alignSelf: 'center', borderWidth: 1, borderColor: '#ccc'}}
                   onError={(e) => {
@@ -1717,7 +1694,7 @@ const handleSaveAll = async () => {
                     {/* Show image only if we have a valid URI and no error */}
                     {currentImageUri && !imageError ? (
                       Platform.OS === "web" ? (
-                        <img
+                        <ProtectedHtmlImage
                           src={currentImageUri}
                           draggable={false}
                           style={{
@@ -1745,7 +1722,7 @@ const handleSaveAll = async () => {
                           }}
                         />
                       ) : (
-                        <Image
+                        <ProtectedImage
                           source={{ uri: currentImageUri }}
                           style={styles.map}
                           resizeMode="contain"
@@ -2248,7 +2225,7 @@ const handleSaveAll = async () => {
 
         return (
           <View key={`existing-${index}`} style={styles.photoWrapper}>
-            <Image
+            <ProtectedImage
               source={{ uri: imageUri }}
               style={styles.viewerImage}
               resizeMode="cover"
@@ -2269,7 +2246,7 @@ const handleSaveAll = async () => {
 
       {(reportImages || []).map((img, index) => (
         <View key={`new-${index}`} style={styles.photoWrapper}>
-          <Image
+          <ProtectedImage
             source={{ uri: img.uri }}
             style={styles.viewerImage}
           />

@@ -73,6 +73,23 @@ function normalizeCustomerAma(customer) {
 // Access tokens deliberately remain memory-only on Web. This limits token
 // exposure to injected scripts and ensures a page reload requires login.
 let authToken = null;
+const privateImageSessionListeners = new Set();
+
+function subscribePrivateImageSession(listener) {
+  privateImageSessionListeners.add(listener);
+  return () => privateImageSessionListeners.delete(listener);
+}
+
+function notifyPrivateImageSession() {
+  for (const listener of privateImageSessionListeners) {
+    try {
+      listener(authToken);
+    } catch {
+      // A viewer must never interrupt login or logout.
+    }
+  }
+}
+
 
 async function purgeLegacyAuthToken() {
   await AsyncStorage.removeItem(LEGACY_AUTH_TOKEN_KEY);
@@ -152,12 +169,14 @@ async function getVisitFrequency(customerId = null) {
 async function setAuthToken(token) {
   await authStorageReady;
   authToken = token ? String(token) : null;
+  notifyPrivateImageSession();
 }
 
 // Clear auth token (for logout)
 async function clearAuthToken() {
   await authStorageReady;
   authToken = null;
+  notifyPrivateImageSession();
 
   try {
     await purgeLegacyAuthToken();
@@ -451,6 +470,7 @@ const apiService = {
   setAuthToken,
   clearAuthToken,
   getCurrentToken,
+  subscribePrivateImageSession,
   verifyTokenWithBackend,
   request,
   uploadCustomerMap,
