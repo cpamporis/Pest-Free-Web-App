@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Image } from "react-native";
 import apiService from "../services/apiService";
 
@@ -7,9 +7,11 @@ const {
   isUploadReference
 } = require("../utils/privateUploadUrl");
 
-export default function ProtectedImage({ source, ...props }) {
+function useProtectedImageSource(source, onDownloadError) {
   const [token, setToken] = useState(apiService.getCurrentToken());
   const [download, setDownload] = useState(null);
+  const errorHandler = useRef(onDownloadError);
+  errorHandler.current = onDownloadError;
   const imageUrl =
     source?.uri && isUploadReference(source.uri)
       ? privateUploadUrl(source.uri, apiService.API_BASE_URL)
@@ -51,8 +53,11 @@ export default function ProtectedImage({ source, ...props }) {
         objectUrl = URL.createObjectURL(blob);
         setDownload({ imageUrl, token, uri: objectUrl });
       })
-      .catch(() => {
-        if (active) setDownload(null);
+      .catch(error => {
+        if (active) {
+          setDownload(null);
+          errorHandler.current?.(error);
+        }
       });
 
     return () => {
@@ -70,5 +75,20 @@ export default function ProtectedImage({ source, ...props }) {
       : null
     : source;
 
+  return displaySource;
+}
+
+export function ProtectedHtmlImage({ src, onError, ...props }) {
+  const source = useProtectedImageSource(
+    src ? { uri: src } : null,
+    onError
+  );
+
+  if (!source?.uri) return null;
+  return <img {...props} src={source?.uri} onError={onError} />;
+}
+
+export default function ProtectedImage({ source, ...props }) {
+  const displaySource = useProtectedImageSource(source);
   return <Image {...props} source={displaySource} />;
 }
