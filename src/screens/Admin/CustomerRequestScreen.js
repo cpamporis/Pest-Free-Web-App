@@ -17,6 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { MaterialIcons, FontAwesome5, Feather, Entypo, MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import apiService, { API_BASE_URL } from "../../services/apiService";
+import ProtectedImage from "../../components/ProtectedImage";
 import pestfreeLogo from "../../../assets/pestfree_logo.png";
 import { incrementTodayRequests } from './Statistics';
 import i18n from "../../services/i18n";
@@ -1268,7 +1269,7 @@ const MONTH_KEYS = [
                                 onPress={() => openImageViewer(request.images, index)}
                                 activeOpacity={0.8}
                               >
-                                <Image
+                                <ProtectedImage
                                   source={{ uri: IMAGE_BASE + img }}
                                   style={{
                                     width: 70,
@@ -1416,7 +1417,7 @@ const MONTH_KEYS = [
                               onPress={() => openImageViewer(imagesArray, index)}
                               activeOpacity={0.8}
                             >
-                              <Image
+                              <ProtectedImage
                                 source={{ uri: IMAGE_BASE + img }}
                                 style={{
                                   width: 70,
@@ -2317,7 +2318,7 @@ const MONTH_KEYS = [
           </TouchableOpacity>
 
           {viewerImages.length > 0 && (
-            <Image
+            <ProtectedImage
               source={{ uri: viewerImages[viewerIndex].uri }}
               style={{
                 width: "90%",
