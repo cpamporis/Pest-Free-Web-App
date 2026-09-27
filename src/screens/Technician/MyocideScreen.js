@@ -1,3 +1,4 @@
+import useServiceSettlement from "../../components/useServiceSettlement";
 // MyocideScreen.js - Desktop
 import {
   View,
@@ -146,6 +147,8 @@ const markAppointmentCompleted = async (appointmentId, visitId, sessionRef) => {
 // ------------------ MAP SCREEN WITH TIMER ------------------
 
 function MapScreen({ customer, onBack, session, technician, onGenerateReport }) {
+  const { confirmPayment, finishPaymentAttempt, paymentDialog } = useServiceSettlement(session);
+
 
   const [sessionVisitId, setSessionVisitId] = useState(
     session?.visitId ?? null
@@ -601,6 +604,8 @@ useEffect(() => {
 // In MyocideScreen.js - Update the handleSaveAll function
 
 const handleSaveAll = async () => {
+  try {
+
   // Transform stations to the format expected by the backend
   const stationsToSend = loggedStations.map(station => ({
     station_id: station.stationId,
@@ -638,7 +643,7 @@ const handleSaveAll = async () => {
     return;
   }
 
-  stopTimer();
+
 
   // Generate a visitId if not exists
   const generatedVisitId = sessionVisitId || `myocide_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -671,8 +676,14 @@ const handleSaveAll = async () => {
     return;
   }
 
+  const settlement = await confirmPayment();
+  if (!settlement) return;
+  stopTimer();
+
   try {
     const formData = new FormData();
+    if (settlement.paymentReceived !== undefined) formData.append("paymentReceived", String(settlement.paymentReceived));
+    if (session?.appointmentId) formData.append("appointmentId", String(session.appointmentId));
 
     // Add the data with properly formatted stations
     formData.append(
@@ -758,6 +769,8 @@ const handleSaveAll = async () => {
   } finally {
     setSaving(false);
   }
+
+  } finally { finishPaymentAttempt(); }
 };
 
   const handleSaveResponse = async (result, isEdit = false) => {
@@ -1605,6 +1618,8 @@ const handleSaveAll = async () => {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={Platform.OS === "ios" ? 110 : 0}
     >
+      {paymentDialog}
+
       <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
         <View style={styles.container}>
           {/* Top Bar with Timer */}
