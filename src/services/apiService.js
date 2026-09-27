@@ -886,7 +886,8 @@ const apiService = {
           ""
         ),
 
-        customerName:
+        customerType: c.customerType ?? c.customer_type ?? null,
+      customerName:
           c.customerName ??
           c.name ??
           c.customer_name ??
@@ -1123,7 +1124,15 @@ const apiService = {
     }
   },
 
+  async getBusinessCapabilities() { return request("GET", "/business/capabilities"); },
+  async getCustomerBalances() { return request("GET", "/business/balances"); },
+  async getCustomerAccount(id) { return request("GET", `/business/customers/${encodeURIComponent(id)}/account`); },
+  async recordCustomerPayment(id, intent) { return request("POST", `/business/customers/${encodeURIComponent(id)}/payments`, intent); },
+
   async createAppointment(payload) {
+    const business = await request("GET", "/business/capabilities");
+    if (!business?.enabled || business.version !== 1) return { success: false, status: 503, error: "Business features are not enabled on this server" };
+
     const appointmentData = {
       technicianId: payload.technicianId,
       customerId: payload.customerId || null,
@@ -1135,6 +1144,8 @@ const apiService = {
       specialServiceSubtype: payload.specialServiceSubtype || null,
       otherPestName: payload.otherPestName || null,
       appointmentCategory: payload.appointmentCategory || null,
+      customerType: payload.customerType,
+      recurrenceDays: payload.appointmentCategory === "contract_service" ? payload.recurrenceDays : null,
       insecticideDetails: payload.insecticideDetails || null,
       disinfection_details: payload.disinfection_details || null,
       serviceNetPrice: payload.serviceNetPrice ?? null,
@@ -1287,6 +1298,10 @@ const apiService = {
       return { success: false, error: "Appointment ID is required" };
     }
 
+    if (payload.customerType !== undefined || payload.recurrenceDays !== undefined) {
+      const business = await request("GET", "/business/capabilities");
+      if (!business?.enabled || business.version !== 1) return { success: false, status: 503, error: "Business features are not enabled on this server" };
+    }
     const result = await request(
       "PUT",
       `/appointments/${appointmentId}`,

@@ -1,3 +1,4 @@
+import useServiceSettlement from "../../components/useServiceSettlement";
 // InsecticideScreen.js - PROFESSIONAL STYLING
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -38,6 +39,8 @@ export default function InsecticideScreen({
   onNavigate,
   onGenerateReport,
 }) {
+  const { confirmPayment, finishPaymentAttempt, paymentDialog } = useServiceSettlement(session);
+
   /* =========================
      CORE STATE
   ========================= */
@@ -654,6 +657,10 @@ export default function InsecticideScreen({
     };
 
   const completeService = async () => {
+  const settlement = await confirmPayment();
+  if (!settlement) return;
+  try {
+
     try {
       // Validate required fields
       if (!customer?.customerId || !technician?.id) {
@@ -755,6 +762,8 @@ export default function InsecticideScreen({
         completedAt: new Date().toISOString(),
       };
       const formData = new FormData();
+    if (settlement.paymentReceived !== undefined) formData.append("paymentReceived", String(settlement.paymentReceived));
+    if (session?.appointmentId) formData.append("appointmentId", String(session.appointmentId));
 
       // 🔥 FIX: Properly stringify arrays/objects
       Object.keys(payload).forEach(key => {
@@ -808,7 +817,9 @@ export default function InsecticideScreen({
         e.message || i18n.t("technician.specialServices.errors.saveFailed") || 'Failed to complete service'
       );
     }
-  };
+
+  } finally { finishPaymentAttempt(); }
+};
 
   const updateService = async () => {
     try {
@@ -2059,6 +2070,8 @@ export default function InsecticideScreen({
 
   return (
       <SafeAreaView style={styles.container}>
+      {paymentDialog}
+
         <KeyboardAvoidingView 
           style={{ flex: 1 }}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
