@@ -1,3 +1,5 @@
+import { MaterialSelector, Action as CommercialAction, money } from "../../components/ChargeableMaterials";
+import CommercialEditor from "../../components/CommercialEditor";
 import AppointmentBusinessFields from "../../components/AppointmentBusinessFields";
 import { appointmentOptionsValid } from "../../utils/customerBilling";
 // AdminTechSchedule.js - Desktop
@@ -98,6 +100,11 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
   const [date, setDate] = useState(new Date());
   const [complianceValidUntil, setComplianceValidUntil] = useState("");
   const [showCompliancePicker, setShowCompliancePicker] = useState(false);
+  const [commercialEditing,setCommercialEditing]=useState(null);
+  const [commercialEnabled,setCommercialEnabled]=useState(false);
+  const [selectedMaterials,setSelectedMaterials]=useState([]);
+  const [materialTotal,setMaterialTotal]=useState(0);
+  useEffect(()=>{apiService.commercialCapabilities().then(r=>setCommercialEnabled(r.enabled===true));},[]);
   const [servicePrice, setServicePrice] = useState("");
   const [serviceVatPercent, setServiceVatPercent] = useState("24");
   const [appointmentCategory, setAppointmentCategory] = useState("first_time");
@@ -579,6 +586,7 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
         customerType,
         recurrenceDays: appointmentCategory === "contract_service" ? recurrenceDays : null,
         ...pricePayload,
+        ...(commercialEnabled ? {materials:selectedMaterials} : {}),
         status: "scheduled",
         ...(complianceValidUntil && {
           compliance_valid_until: complianceValidUntil
@@ -616,6 +624,7 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
         return showAlert(i18n.t("common.error"), res.error || i18n.t("admin.schedule.addCustomer.createFailed") || "Failed to create appointment");
       }
 
+      setSelectedMaterials([]);
       await loadAppointments();
       showAlert(i18n.t("common.success"), i18n.t("admin.schedule.addCustomer.createSuccess") || "Appointment created");
       
@@ -1793,7 +1802,7 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
           />
 
           <Text style={{ marginTop: 8, fontSize: 14, fontWeight: "600", color: "#2c3e50" }}>
-            {(i18n.t("admin.schedule.servicePrice.totalWithVat") || "Total with VAT")}: €
+            Κόστος Υπηρεσίας με ΦΠΑ: €
             {buildVatPricePayload(servicePrice, serviceVatPercent).servicePrice.toFixed(2)}
           </Text>
         </View>
@@ -1848,6 +1857,7 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
                       </Text>
                     </View>
                     <View style={{ flexDirection: "row", gap: 8 }}>
+                      {commercialEnabled && item.status !== "cancelled" && <CommercialAction label="Χρέωση / Υλικά" onPress={()=>setCommercialEditing(item.id)} />}
                       {/* Edit Button - Only show for non-completed, non-cancelled appointments */}
                       {!isCompletedOrCancelled && (item.serviceType === 'insecticide' || item.serviceType === 'disinfection' || item.serviceType === 'special' || item.serviceType === 'myocide' || item.serviceType === 'certificate') && (
                         <TouchableOpacity
@@ -1901,6 +1911,9 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
                     </Text>
                   </View>
                   
+                  <Text style={{marginTop:12,fontWeight:'700',color:'#2c3e50'}}>
+                    Συνολικό κόστος με ΦΠΑ: {money(item.totalPriceCents ?? Math.round(Number(item.servicePrice ?? item.service_price ?? 0)*100))}
+                  </Text>
                   {item.status === 'completed' && (
                     <View style={styles.completedBadge}>
                       <MaterialIcons name="check-circle" size={12} color="#1f9c8b" />
@@ -2348,7 +2361,7 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
                   </View>
 
                   <Text style={{ marginTop: 8, fontSize: 14, fontWeight: "600", color: "#2c3e50" }}>
-                    {(i18n.t("admin.schedule.servicePrice.totalWithVat") || "Total with VAT")}: €
+                    Κόστος Υπηρεσίας με ΦΠΑ: €
                     {buildVatPricePayload(editServicePrice, editServiceVatPercent).servicePrice.toFixed(2)}
                   </Text>
                 </View>
@@ -2788,7 +2801,8 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    {commercialEditing&&<CommercialEditor appointmentId={commercialEditing} onClose={()=>setCommercialEditing(null)} onSaved={loadAppointments}/>}
+</SafeAreaView>
   );
 }
 
@@ -3585,6 +3599,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     backgroundColor: "#0008",
     padding: 20,
+    paddingHorizontal: 24,
   },
   appointmentModalContainer: {
     backgroundColor: '#fff',
