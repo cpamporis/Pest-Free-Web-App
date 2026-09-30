@@ -119,6 +119,7 @@ const getCertificateServiceLabel = () => {
 
 const resolveAppointmentGrossPrice = (appointment) => {
   const rawValue =
+    (appointment?.totalPriceCents != null ? Number(appointment.totalPriceCents)/100 : null) ??
     appointment?.servicePrice ??
     appointment?.service_price;
 

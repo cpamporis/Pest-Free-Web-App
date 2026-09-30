@@ -1,3 +1,4 @@
+import SdsDownloadButton from "./SdsDownloadButton";
 // components/SwipeableVisitRow.js - COMPLETE FIX
 import React, { useState } from 'react';
 import {
@@ -500,6 +501,7 @@ const certificateCopy = {
         
         {/* REPORT AND CERTIFICATE DOWNLOAD BUTTONS */}
 <View style={styles.downloadButtons}>
+<SdsDownloadButton reportId={visit.visitId || visit.logId || visit.id} style={{maxWidth:84}}/>
   <TouchableOpacity
     style={[
       styles.pdfButton,
