@@ -1,3 +1,5 @@
+import {normalizeAppointment} from "../../services/normalizeAppointment";
+import {recurrencePatch, editOptionsValid} from "../../utils/appointmentEdit";
 import { MaterialSelector, Action as CommercialAction, money } from "../../components/ChargeableMaterials";
 import CommercialEditor from "../../components/CommercialEditor";
 import AppointmentBusinessFields from "../../components/AppointmentBusinessFields";
@@ -33,6 +35,10 @@ const {
   buildAppointmentDurationEstimates,
   formatDurationHhMmSs
 } = require("../../utils/appointmentDurationEstimate");
+
+function formatLocalDate(value) {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+}
 
 function normalizeCustomerSearch(value) {
   const text = String(value ?? "").trim().toLocaleLowerCase();
@@ -110,8 +116,13 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
   const [appointmentCategory, setAppointmentCategory] = useState("first_time");
   const [customerType, setCustomerType] = useState("");
   const [recurrenceDays, setRecurrenceDays] = useState(null);
+  const [totalVisits, setTotalVisits] = useState(null);
   const [editCustomerType, setEditCustomerType] = useState("");
+  const [editCommercial,setEditCommercial] = useState(null);
+  const [editMaterials,setEditMaterials] = useState([]);
+  const [editMaterialsTotal,setEditMaterialsTotal] = useState(0);
   const [editRecurrenceDays, setEditRecurrenceDays] = useState(null);
+  const [editTotalVisits, setEditTotalVisits] = useState(null);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [showTechnicianDropdown, setShowTechnicianDropdown] = useState(false);
   const appointmentCategories = [
@@ -399,7 +410,7 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
 
   // Load schedule and calculate stats
   async function loadAppointments() {
-    const dateStr = selectedDate.toISOString().split("T")[0];
+    const dateStr = formatLocalDate(selectedDate);
     try {
       const data = await apiService.getAppointmentsWithPricing({
         dateFrom: dateStr,
@@ -449,7 +460,7 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
   }
 
   async function addCustomerToSchedule(customerId) {
-    if (!appointmentOptionsValid(customerType, appointmentCategory, recurrenceDays)) {
+    if (!appointmentOptionsValid(customerType, appointmentCategory, recurrenceDays, totalVisits)) {
       if (Platform.OS === "web") window.alert(i18n.t("business.chooseOptions"));
       else Alert.alert(i18n.t("common.error"), i18n.t("business.chooseOptions"));
       return;
@@ -555,7 +566,7 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
       return showAlert(i18n.t("common.error"), i18n.t("admin.schedule.addCustomer.invalidTimeRange") || "Hours must be 00-23, minutes must be 00-59");
     }
 
-    const dayKey = selectedDate.toISOString().split("T")[0];
+    const dayKey = formatLocalDate(selectedDate);
     
     const existingAppointment = appointments.find(
       a =>
@@ -570,7 +581,7 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
     }
 
     try {
-      const dayKey = selectedDate.toISOString().split("T")[0];
+      const dayKey = formatLocalDate(selectedDate);
 
       const isUuidCustomer = isUUID(customerId);
 
@@ -583,8 +594,7 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
         appointmentTime: time.trim(),
         serviceType,
         appointmentCategory,
-        customerType,
-        recurrenceDays: appointmentCategory === "contract_service" ? recurrenceDays : null,
+        ...(appointmentCategory === "contract_service" ? {recurrenceDays, totalVisits} : {}),
         ...pricePayload,
         ...(commercialEnabled ? {materials:selectedMaterials} : {}),
         status: "scheduled",
@@ -626,7 +636,10 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
 
       setSelectedMaterials([]);
       await loadAppointments();
-      showAlert(i18n.t("common.success"), i18n.t("admin.schedule.addCustomer.createSuccess") || "Appointment created");
+      showAlert(i18n.t("common.success"),
+        res.scheduledVisits > 1
+          ? i18n.t("business.scheduledVisits", { count: res.scheduledVisits })
+          : i18n.t("admin.schedule.addCustomer.createSuccess") || "Appointment created");
       
       // Reset all fields
       setTime("");
@@ -636,6 +649,7 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
       setOtherPestName("");
       setServicePrice("");
       setServiceVatPercent("24");
+      setTotalVisits(null);
       
     } catch (err) {
       console.error("Error creating appointment:", err);
@@ -818,18 +832,36 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
     return label;
   }
 
-  function handleEditAppointment(appointment) {
+  async function handleEditAppointment(appointment) {
+    if (processing) return;
+    setProcessing(true);
+    try {
+    setEditCommercial(null); setEditMaterials([]);
+    const capabilities = await apiService.commercialCapabilities();
+    if (!capabilities?.success) throw Error(capabilities?.error || 'Αποτυχία φόρτωσης ραντεβού');
+    let commercial = null;
+    if (capabilities.enabled) {
+      commercial = await apiService.commercialAppointment(appointment.id);
+      if (!commercial?.success || !commercial.terms?.lines) throw Error(commercial?.error || 'Αποτυχία φόρτωσης υλικών');
+      if (commercial.appointment) appointment = {...appointment,...normalizeAppointment(commercial.appointment)};
+      setEditCommercial(commercial);
+      setEditMaterials(commercial.terms.lines.filter(l=>l.kind==='material').map(l=>({itemId:l.key,quantity:Number(l.quantity)})));
+    }
+
     
     setEditingAppointment(appointment);
-    setEditCustomerType(appointment.customerType ?? appointment.customer_type ?? "");
-    setEditRecurrenceDays(appointment.recurrenceDays ?? appointment.recurrence_days ?? null);
+    const currentCustomer = customers.find(c =>
+      String(c.customerId) === String(appointment.customerId ?? appointment.customer_id));
+    setEditCustomerType(appointment.customerType || appointment.customer_type || (appointment.status === "completed" ? "" : currentCustomer?.customerType || "private"));
+    setEditRecurrenceDays((appointment.recurrenceDays ?? appointment.recurrence_days) == null ? null : Number(appointment.recurrenceDays ?? appointment.recurrence_days));
+    setEditTotalVisits((appointment.recurrenceTotalVisits ?? appointment.recurrence_total_visits) == null ? null : Number(appointment.recurrenceTotalVisits ?? appointment.recurrence_total_visits));
     
     // Populate all fields from the appointment
     setEditServiceType(appointment.serviceType || 'myocide');
     setEditSpecialServiceSubtype(appointment.specialServiceSubtype || appointment.special_service_subtype || null);
     setEditOtherPestName(appointment.otherPestName || appointment.other_pest_name || '');
     setEditInsecticideDetails(appointment.insecticideDetails || appointment.insecticide_details || '');
-    setEditDisinfectionDetails(appointment.disinfection_details || '');
+    setEditDisinfectionDetails(appointment.disinfectionDetails || appointment.disinfection_details || '');
 
     const storedNetPrice =
       appointment.serviceNetPrice ??
@@ -958,11 +990,20 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
 
     setEditTechnicianId(technicianId);
     
+    const serviceLine = commercial?.terms.lines.find(l=>l.kind==='service');
+    if (serviceLine) {
+      setEditServicePrice((serviceLine.netCents/100).toFixed(2));
+      setEditServiceVatPercent(String(serviceLine.vatBasisPoints/100));
+    }
     setShowEditModal(true);
+    } catch(e) {
+      if (Platform.OS==='web') window.alert(e.message);
+      else Alert.alert(i18n.t('common.error'),e.message);
+    } finally {setProcessing(false);}
   }
 
   async function saveEditedDetails() {
-    if (!appointmentOptionsValid(editCustomerType, editAppointmentCategory, editRecurrenceDays)) {
+    if (!editingAppointment || !editOptionsValid(editingAppointment, editCustomerType, editAppointmentCategory, editRecurrenceDays, editTotalVisits)) {
       if (Platform.OS === "web") window.alert(i18n.t("business.chooseOptions"));
       else Alert.alert(i18n.t("common.error"), i18n.t("business.chooseOptions"));
       return;
@@ -1064,9 +1105,7 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
       // Build the update payload
       const payload = {
         ...editPricePayload,
-        appointmentCategory: editAppointmentCategory,
-        customerType: editCustomerType,
-        recurrenceDays: editAppointmentCategory === "contract_service" ? editRecurrenceDays : null,
+        ...recurrencePatch(editingAppointment, editAppointmentCategory, editRecurrenceDays, editTotalVisits),
         serviceType: editServiceType,
         specialServiceSubtype: editSpecialServiceSubtype,
         otherPestName: '',
@@ -1093,6 +1132,12 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
         payload.otherPestName = i18n.t("admin.schedule.serviceType.certificate.label") || "Certification Service";
       }
       
+      if (editCommercial) {
+        payload.commercial = {expectedRevision:editCommercial.revision,
+          serviceNetPrice:editPricePayload.serviceNetPrice,serviceVatPercent:editPricePayload.serviceVatPercent,
+          materials:editMaterials};
+        for (const field of ['servicePrice','serviceNetPrice','serviceVatPercent','serviceVatAmount']) delete payload[field];
+      }
       const result = await apiService.updateAppointment(appointmentIdToUpdate, payload);
       
       if (result?.success) {
@@ -1100,8 +1145,8 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
         
         // Verify the change was applied
         const updatedAppointments = await apiService.getAppointmentsWithPricing({
-          dateFrom: selectedDate.toISOString().split("T")[0],
-          dateTo: selectedDate.toISOString().split("T")[0],
+          dateFrom: formatLocalDate(selectedDate),
+          dateTo: formatLocalDate(selectedDate),
           technicianId: selectedTech
         });
         
@@ -1494,7 +1539,7 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
             <Text style={styles.sectionTitle}>{i18n.t("admin.schedule.dateTime.title")}</Text>
           </View>
           <Text style={styles.selectedDateText}>
-            {selectedDate.toISOString().split("T")[0]}
+            {formatLocalDate(selectedDate)}
           </Text>
         </View>
 
@@ -1512,7 +1557,7 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
               <View style={styles.dateTimeTextContainer}>
                 <Text style={styles.dateTimeLabel}>{i18n.t("admin.schedule.dateTime.selectedDate")}</Text>
                 <Text style={styles.dateTimeValue}>
-                  {selectedDate.toISOString().split("T")[0]}
+                  {formatLocalDate(selectedDate)}
                 </Text>
               </View>
               <MaterialIcons name={showDatePicker ? "expand-less" : "expand-more"} size={20} color="#666" />
@@ -1759,8 +1804,10 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
           <MaterialIcons name="expand-more" size={24} color="#666" />
         </TouchableOpacity>
 
-        <AppointmentBusinessFields showCustomerType={false} customerType={customerType} onCustomerTypeChange={setCustomerType}
-          category={appointmentCategory} recurrenceDays={recurrenceDays} onRecurrenceChange={setRecurrenceDays} />
+        <MaterialSelector containerStyle={{marginHorizontal:24}} value={selectedMaterials} onChange={setSelectedMaterials} onTotal={setMaterialTotal}/>
+        <AppointmentBusinessFields category={appointmentCategory} recurrenceDays={recurrenceDays}
+          containerStyle={[styles.serviceSelector, styles.businessFieldsCard]}
+          onRecurrenceChange={setRecurrenceDays} totalVisits={totalVisits} onTotalVisitsChange={setTotalVisits} />
 
         {/* SERVICE PRICE */}
         <View style={styles.sectionHeader}>
@@ -1812,7 +1859,7 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
           <View style={styles.sectionTitleContainer}>
             <MaterialIcons name="schedule" size={20} color="#2c3e50" />
             <Text style={styles.sectionTitle}>
-              {i18n.t("admin.schedule.appointments.title", { date: selectedDate.toISOString().split("T")[0] })}
+              {i18n.t("admin.schedule.appointments.title", { date: formatLocalDate(selectedDate) })}
             </Text>
           </View>
           <Text style={styles.appointmentCount}>
@@ -2045,8 +2092,6 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
           </View>
         )}
 
-        {selectedCustomerForAdd && <AppointmentBusinessFields customerType={customerType}
-          onCustomerTypeChange={setCustomerType} category="one_time" />}
 
         {/* Schedule Button */}
         {selectedCustomerForAdd && (
@@ -2366,9 +2411,17 @@ export default function AdminTechSchedule({ onClose, initialCustomerId, onAppoin
                   </Text>
                 </View>
 
+                {editCommercial && <View style={styles.formGroup}>
+                  <MaterialSelector value={editMaterials} onChange={setEditMaterials}
+                    snapshotLines={editCommercial.terms.lines} onTotal={setEditMaterialsTotal}/>
+                  <Text style={styles.formLabel}>Συνολικό κόστος ραντεβού: {money(Math.round(buildVatPricePayload(editServicePrice,editServiceVatPercent).servicePrice*100)+editMaterialsTotal)}</Text>
+                </View>}
                 {/* APPOINTMENT CATEGORY */}
-                <AppointmentBusinessFields customerType={editCustomerType} onCustomerTypeChange={setEditCustomerType}
-                    category={editAppointmentCategory} recurrenceDays={editRecurrenceDays} onRecurrenceChange={setEditRecurrenceDays} />
+                <AppointmentBusinessFields category={editAppointmentCategory} recurrenceDays={editRecurrenceDays}
+                  containerStyle={styles.formGroup}
+                  onRecurrenceChange={setEditRecurrenceDays} totalVisits={editTotalVisits}
+                  onTotalVisitsChange={setEditTotalVisits}
+                  disabled={Boolean(editingAppointment?.recurrenceTotalVisits || editingAppointment?.recurrence_total_visits)} />
                   <View style={styles.formGroup}>
                   <Text style={styles.formLabel}>
                     {i18n.t("admin.schedule.editModal.appointmentCategory")} <Text style={styles.requiredStar}>*</Text>
@@ -3197,6 +3250,10 @@ const styles = StyleSheet.create({
     elevation: 3,
     borderWidth: 1,
     borderColor: "#f0f0f0",
+  },
+  businessFieldsCard: {
+    flexDirection: "column",
+    alignItems: "stretch",
   },
   serviceIcon: {
     width: 56,

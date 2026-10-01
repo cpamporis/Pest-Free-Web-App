@@ -384,8 +384,41 @@ function AmaNumbersFields({
 }
 
 // UPDATED: AddCustomerModal with Image Upload (Gallery only)
+function CustomerTypeField({ value, onChange, disabled }) {
+  const [open, setOpen] = useState(false);
+  const options = [
+    { value: "private", label: i18n.t("business.private") },
+    { value: "business", label: i18n.t("business.business") }
+  ];
+  return (
+    <View style={styles.inputContainer}>
+      <Text style={styles.inputLabel}>{i18n.t("business.customerType")} <Text style={styles.requiredStar}>*</Text></Text>
+      <TouchableOpacity
+        style={[styles.input, { flexDirection: "row", justifyContent: "space-between", alignItems: "center" }]}
+        onPress={() => setOpen(!open)}
+        disabled={disabled}
+        accessibilityRole="button"
+        accessibilityLabel={i18n.t("business.customerType")}
+      >
+        <Text style={{ color: value ? "#2c3e50" : "#888" }}>
+          {options.find(option => option.value === value)?.label || i18n.t("business.choose")}
+        </Text>
+        <MaterialIcons name={open ? "expand-less" : "expand-more"} size={24} color="#666" />
+      </TouchableOpacity>
+      {open && !disabled && options.map(option => (
+        <TouchableOpacity key={option.value} style={styles.selectItem}
+          onPress={() => { onChange(option.value); setOpen(false); }}>
+          <Text style={styles.selectItemTitle}>{option.label}</Text>
+          {option.value === value && <MaterialIcons name="check" size={20} color="#1f9c8b" />}
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
 function AddCustomerModal({ onClose, onSave }) {
   const [customerName, setCustomerName] = useState("");
+  const [customerType, setCustomerType] = useState("");
   const [address, setAddress] = useState("");
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
@@ -429,6 +462,10 @@ function AddCustomerModal({ onClose, onSave }) {
       showAlert(i18n.t("common.error"), i18n.t("admin.customers.addModal.customerNameRequired") || "Customer name is required");
       return;
     }
+    if (!["private", "business"].includes(customerType)) {
+      showAlert(i18n.t("common.error"), i18n.t("business.chooseCustomerType"));
+      return;
+    }
 
     // 🔐 Validate login fields
     if ((loginEmail && !loginPassword) || (!loginEmail && loginPassword)) {
@@ -446,6 +483,7 @@ function AddCustomerModal({ onClose, onSave }) {
         normalizeAmaNumberList(amaNumbers);
       const customerData = {
         customerName: customerName.trim(),
+        customerType,
         address: address.trim(),
         email: email.trim(),
         telephone: telephone.trim(),
@@ -599,6 +637,7 @@ function AddCustomerModal({ onClose, onSave }) {
                   />
                 </View>
 
+                <CustomerTypeField value={customerType} onChange={setCustomerType} disabled={loading} />
                 <View style={styles.inputContainer}>
                   <Text style={styles.inputLabel}>{i18n.t("admin.customers.addModal.address")}</Text>
                   <TextInput
@@ -834,6 +873,7 @@ function AddCustomerModal({ onClose, onSave }) {
 // UPDATED: EditCustomerModal with Image Upload (Gallery only)
 function EditCustomerModal({ customer, onClose, onSave }) {
   const [customerName, setCustomerName] = useState("");
+  const [customerType, setCustomerType] = useState("");
   const [address, setAddress] = useState("");
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
@@ -867,6 +907,7 @@ function EditCustomerModal({ customer, onClose, onSave }) {
         if (!isMounted) return;
 
         setCustomerName(fresh.customerName || "");
+        setCustomerType(fresh.customerType || fresh.customer_type || "");
         setAddress(fresh.address || "");
         setEmail(fresh.email || "");
         setTelephone(fresh.telephone || "");
@@ -1017,6 +1058,10 @@ function EditCustomerModal({ customer, onClose, onSave }) {
       showAlert(i18n.t("common.error"), i18n.t("admin.customers.addModal.customerNameRequired") || "Customer name is required");
       return;
     }
+    if (!["private", "business"].includes(customerType)) {
+      showAlert(i18n.t("common.error"), i18n.t("business.chooseCustomerType"));
+      return;
+    }
 
     setLoading(true);
     try {
@@ -1025,6 +1070,7 @@ function EditCustomerModal({ customer, onClose, onSave }) {
       const updateData = {
         customerId: customer.customerId,
         customerName: customerName.trim(),
+        customerType,
         address: address.trim(),
         email: email.trim(),
         telephone: telephone.trim(),
@@ -1088,6 +1134,7 @@ function EditCustomerModal({ customer, onClose, onSave }) {
                   />
                 </View>
 
+                <CustomerTypeField value={customerType} onChange={setCustomerType} disabled={loading} />
                 <View style={styles.inputContainer}>
                   <Text style={styles.inputLabel}>{i18n.t("admin.customers.addModal.address")}</Text>
                   <TextInput
