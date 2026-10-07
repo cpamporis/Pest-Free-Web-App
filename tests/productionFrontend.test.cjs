@@ -25,7 +25,7 @@ test("Web authentication is production-only and keeps access tokens in memory", 
 
   assert.match(
     source,
-    /https:\/\/field-inspections-backend-production\.up\.railway\.app/
+    /https:\/\/api\.pestify\.gr/
   );
   assert.ok(setStart >= 0 && clearStart > setStart);
   assert.match(setSource, /authToken = token \? String\(token\) : null/);

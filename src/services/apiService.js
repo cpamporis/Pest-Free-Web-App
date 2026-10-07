@@ -10,7 +10,7 @@ const {
 } = require("../security/authResponsePolicy");
 
 const PRODUCTION_API_ORIGIN =
-  "https://field-inspections-backend-production.up.railway.app";
+  "https://api.pestify.gr";
 
 export const API_BASE_URL = `${PRODUCTION_API_ORIGIN}/api`;
 

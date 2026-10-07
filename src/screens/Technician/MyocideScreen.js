@@ -225,7 +225,7 @@ function MapScreen({ customer, onBack, session, technician, onGenerateReport }) 
   const buildImageUrl = (imageName) => {
     if (!imageName) return null;
 
-    let base = API_BASE_URL.replace("/api", "");
+    let base = new URL(API_BASE_URL).origin;
 
     // 🔥 CRITICAL: Web must use https if your site is https
     if (Platform.OS === "web") {
@@ -284,7 +284,7 @@ function MapScreen({ customer, onBack, session, technician, onGenerateReport }) 
   const [serviceStarted, setServiceStarted] = useState(false);
   const [serviceCompleted, setServiceCompleted] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const SERVER_BASE_URL = API_BASE_URL.replace("/api", ""); // http://192.168.1.71:3000
+  const SERVER_BASE_URL = new URL(API_BASE_URL).origin; // http://192.168.1.71:3000
   const isAppointmentSession =
     Boolean(session?.fromAppointment) &&
     session?.serviceType === "myocide" &&
