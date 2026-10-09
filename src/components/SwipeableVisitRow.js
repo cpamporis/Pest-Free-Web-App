@@ -1,4 +1,4 @@
-import SdsDownloadButton from "./SdsDownloadButton";
+import ReportDownloadsMenu from "./ReportDownloadsMenu";
 // components/SwipeableVisitRow.js - COMPLETE FIX
 import React, { useState } from 'react';
 import {
@@ -500,78 +500,7 @@ const certificateCopy = {
         </View>
         
         {/* REPORT AND CERTIFICATE DOWNLOAD BUTTONS */}
-<View style={styles.downloadButtons}>
-<SdsDownloadButton reportId={visit.visitId || visit.logId || visit.id} style={{maxWidth:84}}/>
-  <TouchableOpacity
-    style={[
-      styles.pdfButton,
-      activeDownloadType === "report" &&
-        styles.downloadingButton
-    ]}
-    onPress={(event) =>
-      handleDownloadPDF(event, "report")
-    }
-    activeOpacity={0.7}
-    disabled={isDownloading}
-  >
-    {activeDownloadType === "report" ? (
-      <View style={styles.pdfButtonContent}>
-        <ActivityIndicator size="small" color="#fff" />
-
-        <Text style={styles.pdfButtonText}>
-          {Platform.OS === "web"
-            ? "..."
-            : `${Math.round(downloadProgress * 100)}%`}
-        </Text>
-      </View>
-    ) : (
-      <View style={styles.pdfButtonContent}>
-        <MaterialIcons
-          name="picture-as-pdf"
-          size={22}
-          color="#fff"
-        />
-
-        <Text style={styles.pdfButtonText}>
-          {i18n.t(
-            "components.swipeableVisitRow.download"
-          )}
-        </Text>
-      </View>
-    )}
-  </TouchableOpacity>
-
-  {canDownloadCertificate && (
-    <TouchableOpacity
-      style={[
-        styles.certificateButton,
-        activeDownloadType === "certificate" &&
-          styles.downloadingButton
-      ]}
-      onPress={(event) =>
-        handleDownloadPDF(event, "certificate")
-      }
-      activeOpacity={0.7}
-      disabled={isDownloading}
-    >
-      {activeDownloadType === "certificate" ? (
-        <ActivityIndicator size="small" color="#fff" />
-      ) : (
-        <View style={styles.pdfButtonContent}>
-          <MaterialIcons
-            name="verified"
-            size={22}
-            color="#fff"
-          />
-
-          <Text style={styles.certificateButtonText}>
-            {certificateCopy.label}
-          </Text>
-        </View>
-      )}
-    </TouchableOpacity>
-  )}
-</View>
+<ReportDownloadsMenu visit={visit} canDownloadCertificate={canDownloadCertificate}/>
       </View>
     </TouchableOpacity>
   );
