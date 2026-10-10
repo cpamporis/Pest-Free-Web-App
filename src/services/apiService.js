@@ -912,6 +912,7 @@ const apiService = {
         ),
 
         customerType: c.customerType ?? c.customer_type ?? null,
+      communicationLanguage: c.communicationLanguage === "EN" ? "EN" : "GR",
       customerName:
           c.customerName ??
           c.name ??
@@ -1927,3 +1928,4 @@ export default {
   API_BASE_URL,
   ...apiService
 };
+
